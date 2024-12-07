@@ -12,7 +12,7 @@ def rerank_paper(candidate:list[arxiv.Result],corpus:list[dict],model:str='avsol
     corpus_feature = encoder.encode([paper['data']['abstractNote'] for paper in corpus])
     candidate_feature = encoder.encode([paper.summary for paper in candidate])
     sim = encoder.similarity(candidate_feature,corpus_feature) # [n_candidate, n_corpus]
-    scores = (sim * time_decay_weight).sum(axis=1) * 10 # [n_candidate]
+    scores = (sim * 1.0).sum(axis=1) * 10 # [n_candidate]
     for s,c in zip(scores,candidate):
         c.score = s.item()
     candidate = sorted(candidate,key=lambda x: x.score,reverse=True)
