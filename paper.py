@@ -136,6 +136,21 @@ def _filter_glossary_by_usage(glossary: List[dict], used_text: str) -> List[dict
     return used
 
 
+def _normalize_text(value: Any) -> str:
+    """
+    將巢狀容器轉成可拼接的字串，避免 list/tuple 導致 join 失敗。
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, tuple, set)):
+        return " ".join(_normalize_text(v) for v in value)
+    if isinstance(value, dict):
+        return " ".join(_normalize_text(v) for v in value.values())
+    return str(value)
+
+
 def _call_llm(messages: List[Dict[str, str]],
               temperature: Optional[float] = None,
               reasoning_hint: Optional[str] = None) -> dict:
@@ -582,10 +597,16 @@ Experiments/Results: {self._ctx_for_tldr["expts"]}
         }
 
         # 依最終 TLDR 文字過濾術語，生成 used_glossary_zh（補充解釋用）
-        tl_text = " ".join([
-            merged["abstract_story_zh"], merged["contributions_zh"], merged["techniques_zh"],
-            merged["difficulties_and_beyond_zh"], merged["weaknesses_zh"], merged["brainstorm_zh"]
-        ])
+        tl_text = " ".join(
+            _normalize_text(part) for part in [
+                merged.get("abstract_story_zh"),
+                merged.get("contributions_zh"),
+                merged.get("techniques_zh"),
+                merged.get("difficulties_and_beyond_zh"),
+                merged.get("weaknesses_zh"),
+                merged.get("brainstorm_zh"),
+            ]
+        )
         merged["used_glossary_zh"] = _filter_glossary_by_usage(merged["glossary_candidates"], tl_text)
         return merged
 
