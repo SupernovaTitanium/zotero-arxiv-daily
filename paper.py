@@ -34,6 +34,7 @@ import tiktoken  # 僅用於 affiliations 提示截斷（保留原行為）
 from contextlib import ExitStack
 from urllib.error import HTTPError
 import json
+import os
 
 
 # ------------------------------
@@ -162,6 +163,35 @@ BASE_SYSTEM_PROMPT = (
     "費曼作風：以簡明語言重述觀念；反覆自檢；允許試錯；以可重現的實驗或計算支撐結論。\n\n"
     "磨礪求進：遇到阻礙時，分解為子目標、設定里程碑，持續演算與驗證。\n"
 )
+
+DEFAULT_COGNITIVE_LEVEL = "研究生"
+_COGNITIVE_LEVEL_SPEC = {
+    "本科": "面向高年級大學生，優先建立直觀，減少高等統計符號，必要時以例子輔助。",
+    "研究生": "面向研究生，務必交代關鍵假設、漸近條件與必要資訊（例：可逆費雪資訊、局部錯配階數、QMD 連續性假設）。",
+    "實務": "面向產業實務者，強調決策含義、風險與適用範圍，同時保留必要的統計條件。"
+}
+
+
+def _resolve_cognitive_level_name() -> str:
+    raw = os.getenv("TLDR_COGNITIVE_LEVEL", "").strip()
+    if not raw:
+        raw = DEFAULT_COGNITIVE_LEVEL
+    if raw not in _COGNITIVE_LEVEL_SPEC:
+        logger.debug(f"Unknown TLDR_COGNITIVE_LEVEL '{raw}', fallback to '{DEFAULT_COGNITIVE_LEVEL}'.")
+        return DEFAULT_COGNITIVE_LEVEL
+    return raw
+
+
+def _cognitive_level_clause() -> str:
+    level = _resolve_cognitive_level_name()
+    spec = _COGNITIVE_LEVEL_SPEC[level]
+    return f"認知層級設定：{level}。{spec}\n"
+
+
+def _cognitive_level_hint() -> str:
+    level = _resolve_cognitive_level_name()
+    spec = _COGNITIVE_LEVEL_SPEC[level]
+    return f"{level}｜{spec}"
 
 
 def _call_llm(messages: List[Dict[str, str]],
@@ -401,6 +431,7 @@ class ArxivPaper:
         """
         sys = (
             BASE_SYSTEM_PROMPT +
+            _cognitive_level_clause() +
             "你要把提供的論文資訊轉成一段 90~130 字的繁體中文敘事，"
             "遵循「問題→障礙→方法→結果→意義」順序，語句需緊湊且可追溯來源。"
             "同時列出後續可能需解釋的術語，每個術語給一句白話定義。"
@@ -410,6 +441,7 @@ class ArxivPaper:
 - summary_refined_zh：90~130 字，描述研究脈絡；若資訊不足要說明缺口。
 - glossary_candidates：[{{"term": "<術語>", "simple_def_zh": "<一句白話解釋>"}} ...]。
 
+【認知層級】{_cognitive_level_hint()}
 【輸入】
 Title: {self._ctx_for_tldr["title"]}
 Abstract: {self._ctx_for_tldr["abstract"]}
@@ -429,6 +461,7 @@ Conclusion: {self._ctx_for_tldr["concl"]}
         """
         sys = (
             BASE_SYSTEM_PROMPT +
+            _cognitive_level_clause() +
             "你要以導師視角列出本文主要貢獻，必須指出驗證證據或必要條件。"
             "請以繁體中文撰寫 90~130 字，資訊不足時需註明。"
         )
@@ -436,6 +469,7 @@ Conclusion: {self._ctx_for_tldr["concl"]}
 【任務】只輸出 JSON，鍵：
 - main_contributions_zh：90~130 字，高密度描述本文的核心貢獻與支撐證據。
 
+【認知層級】{_cognitive_level_hint()}
 【可引用的名詞解釋（候選）】
 {json.dumps(s1.get("glossary_candidates", []), ensure_ascii=False)}
 
@@ -458,6 +492,7 @@ Experiments/Results: {self._ctx_for_tldr["expts"]}
         """
         sys = (
             BASE_SYSTEM_PROMPT +
+            _cognitive_level_clause() +
             "你要提煉本文可複現的創新技巧，描述操作步驟、需要的條件與驗證訊號。"
             "若技巧合理性存疑，要明確標註風險或尚未驗證的假設。"
         )
@@ -465,6 +500,7 @@ Experiments/Results: {self._ctx_for_tldr["expts"]}
 【任務】輸出 JSON，鍵：
 - usable_innovations_zh：110~150 字，條理化說明 1~3 個創新技巧，需涵蓋操作步驟、必要條件與驗證訊號；若缺乏佐證請註明風險。
 
+【認知層級】{_cognitive_level_hint()}
 【前序資訊】
 summary_refined_zh: {s1.get("summary_refined_zh","")}
 main_contributions_zh: {s2.get("main_contributions_zh","")}
@@ -485,6 +521,7 @@ Experiments/Results: {self._ctx_for_tldr["expts"]}
         """
         sys = (
             BASE_SYSTEM_PROMPT +
+            _cognitive_level_clause() +
             "你要評估過往方法的關鍵缺陷，並逐點對應本文的改進及其有效機制。"
             "輸出需包含缺陷、對應改進與為何生效，語氣務實。"
         )
@@ -492,6 +529,7 @@ Experiments/Results: {self._ctx_for_tldr["expts"]}
 【任務】輸出 JSON，鍵：
 - prior_weakness_and_improvement_zh：110~150 字，按照「前人弱點 → 本文改進 → 為何有效」順序撰寫；若資料不足須註明。
 
+【認知層級】{_cognitive_level_hint()}
 【前序資訊】
 summary_refined_zh: {s1.get("summary_refined_zh","")}
 main_contributions_zh: {s2.get("main_contributions_zh","")}
@@ -515,6 +553,7 @@ Limitations/Discussion: {self._ctx_for_tldr["limits"]}
         """
         sys = (
             BASE_SYSTEM_PROMPT +
+            _cognitive_level_clause() +
             "你是誠實直接的仲裁者，要指出本文最脆弱的假設、資料/實驗盲點與推理缺口，"
             "並說明最容易失效的場景。"
         )
@@ -522,6 +561,7 @@ Limitations/Discussion: {self._ctx_for_tldr["limits"]}
 【任務】輸出 JSON，鍵：
 - paper_weakness_reasoning_gap_zh：110~150 字，描述最嚴重的弱點、缺乏驗證的假設與可能失效情境；若資訊不足須明示。
 
+【認知層級】{_cognitive_level_hint()}
 【前序資訊】
 summary_refined_zh: {s1.get("summary_refined_zh","")}
 main_contributions_zh: {s2.get("main_contributions_zh","")}
@@ -537,6 +577,76 @@ Limitations/Discussion: {self._ctx_for_tldr["limits"]}
             temperature=0.45,
             reasoning_hint="列出風險與缺口，檢查是否有佐證，再挑出最嚴重者"
         ) or {"paper_weakness_reasoning_gap_zh": "未知"}
+
+    def _build_glossary(self, merged: dict) -> List[dict]:
+        """
+        根據最終段落與候選術語，產生補充解釋清單。
+        """
+        candidates = merged.get("glossary_candidates", []) or []
+        sections = {
+            "摘要精煉": merged.get("summary_refined_zh", ""),
+            "主要貢獻": merged.get("main_contributions_zh", ""),
+            "可用創新技巧": merged.get("usable_innovations_zh", ""),
+            "前人弱點和本文改進": merged.get("prior_weakness_and_improvement_zh", ""),
+            "文章弱點和Reasoning Gap": merged.get("paper_weakness_reasoning_gap_zh", ""),
+        }
+        sections_text = "\n".join(f"{k}：{_normalize_text(v)}" for k, v in sections.items())
+        sys = (
+            BASE_SYSTEM_PROMPT +
+            _cognitive_level_clause() +
+            "你要整理上列段落中的專有名詞、統計條件與假設，"
+            "確保「補充解釋」涵蓋每一個需要釐清的術語，尤其是弱點段所提到的條件。"
+            "輸出需保持高密度且避免冗語。"
+        )
+        user = f"""
+【任務】輸出 JSON 陣列，格式為 [{{"term": "...", "simple_def_zh": "..."}}]。
+- 覆蓋所有段落中出現、讀者可能陌生的術語或假設（例：可逆費雪資訊、QMD、錯配階數）。
+- 優先沿用候選術語的定義，必要時補充或調整。
+- 每個解釋 1~2 句，符合認知層級要求；避免重複或無意義的詞條。
+- 若完全不需要補充，請輸出 []。
+
+【認知層級】{_cognitive_level_hint()}
+【候選術語】{json.dumps(candidates, ensure_ascii=False)}
+【段落】{sections_text}
+""".strip()
+
+        glossary_items: List[dict] = []
+        try:
+            result = _call_llm(
+                messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
+                temperature=0.2,
+                reasoning_hint="逐段檢視術語，對缺漏項補齊定義並去重"
+            )
+        except Exception as exc:
+            logger.warning(f"Glossary generation failed for {self.arxiv_id}: {exc}")
+            result = None
+
+        items = []
+        if isinstance(result, list):
+            items = result
+        elif isinstance(result, dict):
+            if isinstance(result.get("glossary"), list):
+                items = result["glossary"]
+            elif isinstance(result.get("items"), list):
+                items = result["items"]
+
+        seen = set()
+        for entry in items or []:
+            if not isinstance(entry, dict):
+                continue
+            term = _normalize_text(entry.get("term")).strip()
+            defi = _normalize_text(entry.get("simple_def_zh")).strip()
+            if not term or not defi:
+                continue
+            key = term.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            glossary_items.append({"term": term, "simple_def_zh": defi})
+
+        if not glossary_items:
+            return _filter_glossary_by_usage(candidates, " ".join(sections.values()))
+        return glossary_items
 
     # ---------------- 最終 TLDR 組裝 ----------------
 
@@ -564,17 +674,7 @@ Limitations/Discussion: {self._ctx_for_tldr["limits"]}
             "stages": {"s1": s1, "s2": s2, "s3": s3, "s4": s4, "s5": s5},
         }
 
-        # 依最終 TLDR 文字過濾術語，生成 used_glossary_zh（補充解釋用）
-        tl_text = " ".join(
-            _normalize_text(part) for part in [
-                merged.get("summary_refined_zh"),
-                merged.get("main_contributions_zh"),
-                merged.get("usable_innovations_zh"),
-                merged.get("prior_weakness_and_improvement_zh"),
-                merged.get("paper_weakness_reasoning_gap_zh"),
-            ]
-        )
-        merged["used_glossary_zh"] = _filter_glossary_by_usage(merged["glossary_candidates"], tl_text)
+        merged["used_glossary_zh"] = self._build_glossary(merged)
         return merged
 
     @cached_property
