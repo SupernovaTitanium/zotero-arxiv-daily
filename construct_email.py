@@ -8,7 +8,7 @@ import smtplib
 import datetime
 import time
 from loguru import logger
-
+from markdown import markdown as md_to_html
 framework = """
 <!DOCTYPE HTML>
 <html>
@@ -139,7 +139,12 @@ def render_email(papers:list[ArxivPaper]):
                 affiliations += ', ...'
         else:
             affiliations = 'Unknown Affiliation'
-        parts.append(get_block_html(p.title, authors,rate,p.arxiv_id ,p.tldr, p.pdf_url, p.code_url, affiliations))
+
+        # 這兩行取代原本用 p.tldr 的地方
+        body_md = getattr(p, "tldr_markdown", None) or p.tldr
+        body_html = md_to_html(body_md) if body_md is p.tldr_markdown else p.tldr.replace('\n', '<br/>')
+
+        parts.append(get_block_html(p.title, authors, rate, p.arxiv_id, body_html, p.pdf_url, p.code_url, affiliations))
         time.sleep(10)
 
     content = '<br>' + '</br><br>'.join(parts) + '</br>'
