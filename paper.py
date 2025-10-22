@@ -359,7 +359,7 @@ class ArxivPaper:
         )
         user = f"""
 【任務】輸出 JSON，鍵為：
-- explanations: [{"{"}"term": "<術語>", "simple_def_zh": "<一句白話定義>"} , ...]
+- explanations: [{{"term": "<術語>", "simple_def_zh": "<一句白話定義>"}} , ...]
 - abstract_2sentences_zh: 以直覺與洞見壓縮的摘要（指導原則：兩句以內，非硬性）
 
 【輸入】
