@@ -4,12 +4,11 @@ paper.py — 適配新版 llm.py（支援 temperature），分階段遞進式 TL
 信件版面改為：
 TLDR:
 1. 摘要精煉
-2. 貢獻
-3. 新技巧
-4. 困難與超越
-5. 弱點
-腦洞
-補充解釋（只對 TLDR 文字中出現的術語做白話解釋）
+2. 主要貢獻
+3. 可用創新技巧
+4. 前人弱點和本文改進
+5. 文章弱點和 Reasoning Gap
+6. 補充解釋（只對 TLDR 文字中出現的術語做白話解釋）
 
 保留：
 - affiliations 從 LaTeX 抽取
@@ -149,6 +148,20 @@ def _normalize_text(value: Any) -> str:
     if isinstance(value, dict):
         return " ".join(_normalize_text(v) for v in value.values())
     return str(value)
+
+
+BASE_SYSTEM_PROMPT = (
+    "角色：支持型數學家（風格近陶哲軒）。\n\n"
+    "核心準則\n\n"
+    "先釐清：在下結論前，精確定義問題、目標、輸入／輸出、記號與假設。\n\n"
+    "嚴謹為上：每一步推理皆可檢驗；不得以權威取代證明；錯誤與漏洞須明確定位並修正。\n\n"
+    "誠實陳述完成度：若無法完全解決，只給出已證明的重要部分結果，並清晰說明未解的障礙、條件或反例。\n\n"
+    "不逢迎：只評價論證與證據，不迎合立場或能力。\n\n"
+    "反事實挑戰：主動尋找反例、必要條件、最壞情形與極端案例，以檢驗論斷的穩健性。\n\n"
+    "第一性原理：從定義、公理與基本性質出發，少用類比，多用可驗證的邏輯與構造。\n\n"
+    "費曼作風：以簡明語言重述觀念；反覆自檢；允許試錯；以可重現的實驗或計算支撐結論。\n\n"
+    "磨礪求進：遇到阻礙時，分解為子目標、設定里程碑，持續演算與驗證。\n"
+)
 
 
 def _call_llm(messages: List[Dict[str, str]],
@@ -382,23 +395,20 @@ class ArxivPaper:
 
     # ---------------- 五個階段的 LLM 呼叫 ----------------
 
-    def _stage1_story_and_glossary(self) -> dict:
+    def _stage1_summary_and_glossary(self) -> dict:
         """
-        S1：低溫（0.2）
-        - abstract_story_zh：故事型精煉摘要（問題→障礙→方法→結果→意義）
-        - glossary_candidates：候選術語（每詞一句白話定義）
+        S1：產生摘要精煉與候選術語。
         """
         sys = (
-            "你是一位非常有聲望且經驗豐富的數學系教授（風格近陶哲軒）。"
-            "請用繁體中文；用直覺與洞見讓 5 歲孩童也能理解。"
-            "僅根據提供文本作答；不要外露推理過程。"
+            BASE_SYSTEM_PROMPT +
+            "你要把提供的論文資訊轉成一段 90~130 字的繁體中文敘事，"
+            "遵循「問題→障礙→方法→結果→意義」順序，語句需緊湊且可追溯來源。"
+            "同時列出後續可能需解釋的術語，每個術語給一句白話定義。"
         )
         user = f"""
-【任務】只輸出一個 JSON 物件，鍵：
-- abstract_story_zh：用「問題→障礙→方法→結果→意義」講清楚本文在做什麼與得到什麼；語句精煉但資訊密。
-- glossary_candidates：[{{
-    "term": "<術語>", "simple_def_zh": "<一句白話定義>"
-}} ...]（列出你在後續(1)~(6)會用到、且對 5 歲孩童需要解釋的術語）
+【任務】輸出 JSON 物件，鍵：
+- summary_refined_zh：90~130 字，描述研究脈絡；若資訊不足要說明缺口。
+- glossary_candidates：[{{"term": "<術語>", "simple_def_zh": "<一句白話解釋>"}} ...]。
 
 【輸入】
 Title: {self._ctx_for_tldr["title"]}
@@ -410,22 +420,21 @@ Conclusion: {self._ctx_for_tldr["concl"]}
         return _call_llm(
             messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
             temperature=0.2,
-            reasoning_hint="先在內部萃取設定/目標/方法/結果/意義，再組成兩三句高密度敘事"
-        ) or {"abstract_story_zh": "未知", "glossary_candidates": []}
+            reasoning_hint="先萃取核心資訊與前後因，再壓縮成一段敘事"
+        ) or {"summary_refined_zh": "未知", "glossary_candidates": []}
 
-    def _stage2_contributions(self, s1: dict) -> dict:
+    def _stage2_main_contributions(self, s1: dict) -> dict:
         """
-        S2：0.35
-        - contributions_zh：本文主要貢獻（條理清楚、避免空話）
+        S2：說明主要貢獻。
         """
         sys = (
-            "你是嚴謹、直率且鼓勵後進的教授。"
-            "請用繁體中文，以可驗證的語句描述本文的主要貢獻；避免口號。"
-            "可引用前一階段提供的名詞解釋，但不重複長篇定義。"
+            BASE_SYSTEM_PROMPT +
+            "你要以導師視角列出本文主要貢獻，必須指出驗證證據或必要條件。"
+            "請以繁體中文撰寫 90~130 字，資訊不足時需註明。"
         )
         user = f"""
 【任務】只輸出 JSON，鍵：
-- contributions_zh：條列或短段落均可，但要密度高且具體。
+- main_contributions_zh：90~130 字，高密度描述本文的核心貢獻與支撐證據。
 
 【可引用的名詞解釋（候選）】
 {json.dumps(s1.get("glossary_candidates", []), ensure_ascii=False)}
@@ -440,25 +449,53 @@ Experiments/Results: {self._ctx_for_tldr["expts"]}
         return _call_llm(
             messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
             temperature=0.35,
-            reasoning_hint="在內部列候選貢獻與證據，再做保守聚合"
-        ) or {"contributions_zh": "未知"}
+            reasoning_hint="先列可能的貢獻與證據，再合併成一段細節充足的描述"
+        ) or {"main_contributions_zh": "未知"}
 
-    def _stage3_prior(self, s1: dict, s2: dict) -> dict:
+    def _stage3_innovations(self, s1: dict, s2: dict) -> dict:
         """
-        S3：0.45
-        - prior_challenges_zh：以往文獻的核心困難與限制（精煉）
+        S3：萃取可用創新技巧。
         """
         sys = (
-            "你是嚴謹的領域評審，指出過往方法的關鍵困難與限制。"
-            "請用繁體中文；僅依據提供文本；不外露推理過程。"
+            BASE_SYSTEM_PROMPT +
+            "你要提煉本文可複現的創新技巧，描述操作步驟、需要的條件與驗證訊號。"
+            "若技巧合理性存疑，要明確標註風險或尚未驗證的假設。"
         )
         user = f"""
-【任務】只輸出 JSON，鍵：
-- prior_challenges_zh：濃縮描述以往文獻在本題上的核心困難與限制。
+【任務】輸出 JSON，鍵：
+- usable_innovations_zh：110~150 字，條理化說明 1~3 個創新技巧，需涵蓋操作步驟、必要條件與驗證訊號；若缺乏佐證請註明風險。
 
 【前序資訊】
-abstract_story_zh: {s1.get("abstract_story_zh","")}
-contributions_zh: {s2.get("contributions_zh","")}
+summary_refined_zh: {s1.get("summary_refined_zh","")}
+main_contributions_zh: {s2.get("main_contributions_zh","")}
+
+【輸入】
+Method: {self._ctx_for_tldr["method"]}
+Experiments/Results: {self._ctx_for_tldr["expts"]}
+""".strip()
+        return _call_llm(
+            messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
+            temperature=0.4,
+            reasoning_hint="列舉候選技巧，評估條件與風險後組成高密度敘述"
+        ) or {"usable_innovations_zh": "未知"}
+
+    def _stage4_prior_and_improvement(self, s1: dict, s2: dict, s3: dict) -> dict:
+        """
+        S4：比較前人弱點與本文改進。
+        """
+        sys = (
+            BASE_SYSTEM_PROMPT +
+            "你要評估過往方法的關鍵缺陷，並逐點對應本文的改進及其有效機制。"
+            "輸出需包含缺陷、對應改進與為何生效，語氣務實。"
+        )
+        user = f"""
+【任務】輸出 JSON，鍵：
+- prior_weakness_and_improvement_zh：110~150 字，按照「前人弱點 → 本文改進 → 為何有效」順序撰寫；若資料不足須註明。
+
+【前序資訊】
+summary_refined_zh: {s1.get("summary_refined_zh","")}
+main_contributions_zh: {s2.get("main_contributions_zh","")}
+usable_innovations_zh: {s3.get("usable_innovations_zh","")}
 
 【輸入】
 Intro: {self._ctx_for_tldr["intro"]}
@@ -469,71 +506,37 @@ Limitations/Discussion: {self._ctx_for_tldr["limits"]}
         return _call_llm(
             messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
             temperature=0.45,
-            reasoning_hint="先列三到五條困難，合併去重，輸出最關鍵者"
-        ) or {"prior_challenges_zh": "未知"}
+            reasoning_hint="建立缺陷清單，再與創新逐點對應，確認機制後輸出"
+        ) or {"prior_weakness_and_improvement_zh": "未知"}
 
-    def _stage4_techniques_and_beyond(self, s1: dict, s2: dict, s3: dict) -> dict:
+    def _stage5_weaknesses(self, s1: dict, s2: dict, s3: dict, s4: dict) -> dict:
         """
-        S4：0.45
-        - techniques_zh：達成貢獻的新技巧（點出機制/構造/關鍵步驟）
-        - why_better_zh：清楚說明「新技巧為何能解以往做不到的事」（對應 prior_challenges）
-        - difficulties_and_beyond_zh：把「困難→此文如何跨越→為何重要」敘事化成一個緊湊段落
+        S5：指出文章弱點與推理缺口。
         """
         sys = (
-            "你是善於做機制拆解的導師。"
-            "請用繁體中文，說清楚新技巧的關鍵構造/步驟/機制，以及它如何逐點擊破以往的困難。"
-            "避免空話，強調對應關係。"
+            BASE_SYSTEM_PROMPT +
+            "你是誠實直接的仲裁者，要指出本文最脆弱的假設、資料/實驗盲點與推理缺口，"
+            "並說明最容易失效的場景。"
         )
         user = f"""
-【任務】只輸出 JSON，鍵：
-- techniques_zh：點出關鍵步驟/構造/機制與直覺。
-- why_better_zh：以「舊困難 → 新技巧 → 為何有效（機制）」的對應關係表述。
-- difficulties_and_beyond_zh：把「以往困難 + 本文如何跨越 + 為何重要」講成一段緊湊的故事。
+【任務】輸出 JSON，鍵：
+- paper_weakness_reasoning_gap_zh：110~150 字，描述最嚴重的弱點、缺乏驗證的假設與可能失效情境；若資訊不足須明示。
 
 【前序資訊】
-abstract_story_zh: {s1.get("abstract_story_zh","")}
-contributions_zh: {s2.get("contributions_zh","")}
-prior_challenges_zh: {s3.get("prior_challenges_zh","")}
+summary_refined_zh: {s1.get("summary_refined_zh","")}
+main_contributions_zh: {s2.get("main_contributions_zh","")}
+usable_innovations_zh: {s3.get("usable_innovations_zh","")}
+prior_weakness_and_improvement_zh: {s4.get("prior_weakness_and_improvement_zh","")}
 
 【輸入】
-Method: {self._ctx_for_tldr["method"]}
 Experiments/Results: {self._ctx_for_tldr["expts"]}
+Limitations/Discussion: {self._ctx_for_tldr["limits"]}
 """.strip()
         return _call_llm(
             messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
             temperature=0.45,
-            reasoning_hint="建立逐點映射：每個 prior challenge 連到一個技巧與其有效機制"
-        ) or {
-            "techniques_zh": "未知",
-            "why_better_zh": "未知",
-            "difficulties_and_beyond_zh": "未知",
-        }
-
-    def _stage5_brainstorm(self, s1: dict, s2: dict, s3: dict, s4: dict) -> dict:
-        """
-        S5：0.9
-        - brainstorm_zh：以本文為起點的新研究問題（要有可驗證信號或最小實驗）
-        """
-        sys = (
-            "你現在是有創造力但務實的導師。"
-            "請用繁體中文，提出新的學術問題（工作性假說），必須包含可驗證信號或最小實驗。"
-        )
-        user = f"""
-【任務】只輸出 JSON，鍵：
-- brainstorm_zh：短而有操作性；包含可驗證信號或最小實驗。
-
-【前序資訊】
-abstract_story_zh: {s1.get("abstract_story_zh","")}
-contributions_zh: {s2.get("contributions_zh","")}
-prior_challenges_zh: {s3.get("prior_challenges_zh","")}
-techniques_zh: {s4.get("techniques_zh","")}
-why_better_zh: {s4.get("why_better_zh","")}
-""".strip()
-        return _call_llm(
-            messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
-            temperature=0.9,
-            reasoning_hint="展開數個方向再收斂為一條可落地的題目描述"
-        ) or {"brainstorm_zh": "未知"}
+            reasoning_hint="列出風險與缺口，檢查是否有佐證，再挑出最嚴重者"
+        ) or {"paper_weakness_reasoning_gap_zh": "未知"}
 
     # ---------------- 最終 TLDR 組裝 ----------------
 
@@ -541,70 +544,34 @@ why_better_zh: {s4.get("why_better_zh","")}
     def tldr_json(self) -> dict:
         """
         分階段生成與合併，回傳 JSON：
-          keys: abstract_story_zh, contributions_zh, prior_challenges_zh,
-                techniques_zh, why_better_zh, difficulties_and_beyond_zh,
-                weaknesses_zh, brainstorm_zh,
+          keys: summary_refined_zh, main_contributions_zh, usable_innovations_zh,
+                prior_weakness_and_improvement_zh, paper_weakness_reasoning_gap_zh,
                 glossary_candidates, used_glossary_zh, stages
         """
-        # 依序跑 S1~S5；弱點沿用先前單獨抽取的 S3 型，但放在 S4/前後都可
-        s1 = self._stage1_story_and_glossary()
-        s2 = self._stage2_contributions(s1)
-        s3 = self._stage3_prior(s1, s2)
-        s4 = self._stage4_techniques_and_beyond(s1, s2, s3)
-
-        # 弱點：沿用原來思路（中溫、批判）
-        def _stage_weaknesses() -> dict:
-            sys = (
-                "你是誠實直接的仲裁者（INTJ 風格）。"
-                "用繁體中文，指出最脆弱的假設、資料/實驗的盲點、可能失效的場景。"
-                "僅依據提供文本與前序摘要；不外露推理過程。"
-            )
-            user = f"""
-【任務】只輸出 JSON，鍵：
-- weaknesses_zh：精煉指出本文最可能的弱點或威脅到效度之處。
-
-【前序資訊】
-abstract_story_zh: {s1.get("abstract_story_zh","")}
-contributions_zh: {s2.get("contributions_zh","")}
-prior_challenges_zh: {s3.get("prior_challenges_zh","")}
-techniques_zh: {s4.get("techniques_zh","")}
-why_better_zh: {s4.get("why_better_zh","")}
-
-【輸入】
-Limitations/Discussion: {self._ctx_for_tldr["limits"]}
-Experiments/Results: {self._ctx_for_tldr["expts"]}
-""".strip()
-            return _call_llm(
-                messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
-                temperature=0.45,
-                reasoning_hint="先尋找反例與最壞情況，再輸出最具說服力的一點"
-            ) or {"weaknesses_zh": "未知"}
-
-        sW = _stage_weaknesses()
-        s5 = self._stage5_brainstorm(s1, s2, s3, s4)
+        s1 = self._stage1_summary_and_glossary()
+        s2 = self._stage2_main_contributions(s1)
+        s3 = self._stage3_innovations(s1, s2)
+        s4 = self._stage4_prior_and_improvement(s1, s2, s3)
+        s5 = self._stage5_weaknesses(s1, s2, s3, s4)
 
         merged = {
-            "abstract_story_zh": s1.get("abstract_story_zh", "未知"),
-            "contributions_zh": s2.get("contributions_zh", "未知"),
-            "prior_challenges_zh": s3.get("prior_challenges_zh", "未知"),
-            "techniques_zh": s4.get("techniques_zh", "未知"),
-            "why_better_zh": s4.get("why_better_zh", "未知"),
-            "difficulties_and_beyond_zh": s4.get("difficulties_and_beyond_zh", "未知"),
-            "weaknesses_zh": sW.get("weaknesses_zh", "未知"),
-            "brainstorm_zh": s5.get("brainstorm_zh", "未知"),
+            "summary_refined_zh": s1.get("summary_refined_zh", "未知"),
+            "main_contributions_zh": s2.get("main_contributions_zh", "未知"),
+            "usable_innovations_zh": s3.get("usable_innovations_zh", "未知"),
+            "prior_weakness_and_improvement_zh": s4.get("prior_weakness_and_improvement_zh", "未知"),
+            "paper_weakness_reasoning_gap_zh": s5.get("paper_weakness_reasoning_gap_zh", "未知"),
             "glossary_candidates": s1.get("glossary_candidates", []),
-            "stages": {"s1": s1, "s2": s2, "s3": s3, "s4": s4, "sW": sW, "s5": s5},
+            "stages": {"s1": s1, "s2": s2, "s3": s3, "s4": s4, "s5": s5},
         }
 
         # 依最終 TLDR 文字過濾術語，生成 used_glossary_zh（補充解釋用）
         tl_text = " ".join(
             _normalize_text(part) for part in [
-                merged.get("abstract_story_zh"),
-                merged.get("contributions_zh"),
-                merged.get("techniques_zh"),
-                merged.get("difficulties_and_beyond_zh"),
-                merged.get("weaknesses_zh"),
-                merged.get("brainstorm_zh"),
+                merged.get("summary_refined_zh"),
+                merged.get("main_contributions_zh"),
+                merged.get("usable_innovations_zh"),
+                merged.get("prior_weakness_and_improvement_zh"),
+                merged.get("paper_weakness_reasoning_gap_zh"),
             ]
         )
         merged["used_glossary_zh"] = _filter_glossary_by_usage(merged["glossary_candidates"], tl_text)
@@ -615,29 +582,26 @@ Experiments/Results: {self._ctx_for_tldr["expts"]}
         """
         純文字 TLDR（Markdown 也可讀），嚴格依你指定的版面：
         1. 摘要精煉
-        2. 貢獻
-        3. 新技巧
-        4. 困難與超越
-        5. 弱點
-        腦洞
-        補充解釋
+        2. 主要貢獻
+        3. 可用創新技巧
+        4. 前人弱點和本文改進
+        5. 文章弱點和 Reasoning Gap
+        6. 補充解釋
         """
         d = self.tldr_json
         # 補充解釋只列 TLDR 內實際出現的術語
         if d.get("used_glossary_zh"):
-            explain_lines = ["補充解釋："] + [f"- {e['term']}：{e['simple_def_zh']}" for e in d["used_glossary_zh"]]
+            glossary_text = "；".join(f"{e['term']}：{e['simple_def_zh']}" for e in d["used_glossary_zh"])
         else:
-            explain_lines = ["補充解釋：無需特別解釋的術語。"]
+            glossary_text = "無需特別解釋的術語。"
 
         lines = [
-            "TLDR:",
-            f"1. 摘要精煉: {d.get('abstract_story_zh','未知')}",
-            f"2. 貢獻: {d.get('contributions_zh','未知')}",
-            f"3. 新技巧: {d.get('techniques_zh','未知')}",
-            f"4. 困難與超越: {d.get('difficulties_and_beyond_zh','未知')}",
-            f"5. 弱點: {d.get('weaknesses_zh','未知')}",
-            f"腦洞: {d.get('brainstorm_zh','未知')}",
-            *explain_lines,
+            f"1. 摘要精煉：{d.get('summary_refined_zh','未知')}",
+            f"2. 主要貢獻：{d.get('main_contributions_zh','未知')}",
+            f"3. 可用創新技巧：{d.get('usable_innovations_zh','未知')}",
+            f"4. 前人弱點和本文改進：{d.get('prior_weakness_and_improvement_zh','未知')}",
+            f"5. 文章弱點和Reasoning Gap：{d.get('paper_weakness_reasoning_gap_zh','未知')}",
+            f"6. 補充解釋：{glossary_text}",
         ]
         return "\n".join(lines)
 
@@ -647,17 +611,17 @@ Experiments/Results: {self._ctx_for_tldr["expts"]}
         Markdown 版本（更易掃讀）。
         """
         d = self.tldr_json
-        exp_md = "\n".join([f"- **{e['term']}**：{e['simple_def_zh']}" for e in d.get("used_glossary_zh", [])]) \
-                 or "無需特別解釋的術語。"
+        if d.get("used_glossary_zh"):
+            exp_md = "；".join([f"**{e['term']}**：{e['simple_def_zh']}" for e in d.get("used_glossary_zh", [])])
+        else:
+            exp_md = "無需特別解釋的術語。"
         md = (
-            f"**TLDR**\n\n"
-            f"1. **摘要精煉**：{d.get('abstract_story_zh','未知')}\n"
-            f"2. **貢獻**：{d.get('contributions_zh','未知')}\n"
-            f"3. **新技巧**：{d.get('techniques_zh','未知')}\n"
-            f"4. **困難與超越**：{d.get('difficulties_and_beyond_zh','未知')}\n"
-            f"5. **弱點**：{d.get('weaknesses_zh','未知')}\n"
-            f"**腦洞**：{d.get('brainstorm_zh','未知')}\n\n"
-            f"**補充解釋**\n{exp_md}\n"
+            f"1. **摘要精煉**：{d.get('summary_refined_zh','未知')}\n"
+            f"2. **主要貢獻**：{d.get('main_contributions_zh','未知')}\n"
+            f"3. **可用創新技巧**：{d.get('usable_innovations_zh','未知')}\n"
+            f"4. **前人弱點和本文改進**：{d.get('prior_weakness_and_improvement_zh','未知')}\n"
+            f"5. **文章弱點和Reasoning Gap**：{d.get('paper_weakness_reasoning_gap_zh','未知')}\n"
+            f"6. **補充解釋**：{exp_md}\n"
         )
         return md
 
