@@ -483,6 +483,40 @@ class ArxivPaper:
             f"{COMMON_OUTPUT_RULES}"
         )
 
+    def _refine_section_content(self, llm, section_spec: Dict[str, str], draft: str) -> str:
+        """
+        以相同系統人格再次提示 LLM，要求在初稿基礎上進行格式與內容微調。
+        """
+        if not draft or draft.strip() == "[來源缺失]":
+            return draft
+        label = section_spec["label"]
+        title = _value_or_missing(self.title)
+        refine_prompt = (
+            f"你剛依據規範寫完《{title}》的「{label}」初稿，內容如下：\n"
+            "```markdown\n"
+            f"{draft}\n"
+            "```\n\n"
+            "請保留所有正確資訊，重新潤飾並做以下檢查：\n"
+            "1. Markdown 標題、粗體與表格語法需合法並與指示一致。\n"
+            "2. 引用必須保留或視情況補上 [來源缺失]；不得杜撰頁碼。\n"
+            "3. 條列應使用 Markdown 無序列表；多段敘事需保持短句與姥姥語氣。\n"
+            "4. 僅輸出最終 Markdown 版本，不要附加評論。\n\n"
+            f"【原任務提醒】\n{section_spec['instruction']}\n\n"
+            f"{COMMON_OUTPUT_RULES}"
+        )
+        try:
+            refined = llm.generate(
+                messages=[
+                    {"role": "system", "content": BASE_SYSTEM_PROMPT},
+                    {"role": "user", "content": refine_prompt},
+                ],
+                temperature=0.15,
+            )
+            return refined.strip() or draft
+        except Exception as exc:
+            logger.error(f"Failed to refine section '{section_spec['key']}' for {self.arxiv_id}: {exc}")
+            return draft
+
     def _generate_section_content(self, section_spec: Dict[str, str]) -> str:
         llm = get_llm()
         prompt = self._build_section_prompt(section_spec)
@@ -497,7 +531,8 @@ class ArxivPaper:
             )
             if not output or not output.strip():
                 raise ValueError("empty output")
-            return output.strip()
+            draft = output.strip()
+            return self._refine_section_content(llm, section_spec, draft)
         except Exception as exc:
             logger.error(f"Failed to generate section '{section_spec['key']}' for {self.arxiv_id}: {exc}")
             return "[來源缺失]"

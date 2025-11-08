@@ -140,9 +140,13 @@ def render_email(papers:list[ArxivPaper]):
         else:
             affiliations = 'Unknown Affiliation'
 
-        # 這兩行取代原本用 p.tldr 的地方
-        body_md = getattr(p, "tldr_markdown", None) or p.tldr
-        body_html = md_to_html(body_md) if body_md is p.tldr_markdown else p.tldr.replace('\n', '<br/>')
+        # 對所有 digest 內容統一做 Markdown→HTML，確保表格/程式碼等語法能在信件中正確渲染
+        body_md = getattr(p, "tldr_markdown", None) or getattr(p, "tldr", "")
+        body_html = md_to_html(
+            body_md,
+            extensions=["extra", "tables", "fenced_code", "sane_lists"],
+            output_format="html5",
+        )
 
         parts.append(get_block_html(p.title, authors, rate, p.arxiv_id, body_html, p.pdf_url, p.code_url, affiliations))
         time.sleep(10)
