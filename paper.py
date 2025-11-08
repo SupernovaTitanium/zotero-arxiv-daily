@@ -1,14 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-paper.py — 適配新版 llm.py（支援 temperature），分階段遞進式 TLDR 生成；
-信件版面改為：
-TLDR:
-1. 摘要精煉
-2. 主要貢獻
-3. 可用創新技巧
-4. 前人弱點和本文改進
-5. 文章弱點和 Reasoning Gap
-6. 補充解釋（只對 TLDR 文字中出現的術語做白話解釋）
+paper.py — 適配新版 llm.py（支援 temperature），並將 TLDR 升級為
+「姥姥速覽」格式：前置導覽＋A~G 七個章節，以及連續發問檢核，
+涵蓋摘要敘事、術語表、嚴謹定義、貢獻、對照分析、可遷移技巧、
+弱點/推理缺口與 QA checklist。輸出預設為 Markdown，render_email
+仍可直接轉成 HTML。
 
 保留：
 - affiliations 從 LaTeX 抽取
@@ -25,7 +21,6 @@ from tempfile import TemporaryDirectory
 import arxiv
 import tarfile
 import re
-import time  # 供外部流程使用
 from llm import get_llm
 import requests
 from requests.adapters import HTTPAdapter, Retry
@@ -33,8 +28,6 @@ from loguru import logger
 import tiktoken  # 僅用於 affiliations 提示截斷（保留原行為）
 from contextlib import ExitStack
 from urllib.error import HTTPError
-import json
-import os
 
 
 # ------------------------------
@@ -94,48 +87,6 @@ def _harvest_contrib_like(txt: str, limit: int = 10) -> str:
     return ' '.join(spans[:limit])
 
 
-def _json_from_text(s: str) -> dict:
-    """
-    盡力從模型輸出抽出 JSON。
-    """
-    if not s:
-        return {}
-    try:
-        return json.loads(s)
-    except Exception:
-        pass
-    m = re.search(r'\{.*\}', s, flags=re.DOTALL)
-    if not m:
-        return {}
-    txt = m.group(0)
-    txt = re.sub(r',\s*([\]}])', r'\1', txt)  # 移除尾逗號
-    try:
-        return json.loads(txt)
-    except Exception:
-        return {}
-
-
-def _filter_glossary_by_usage(glossary: List[dict], used_text: str) -> List[dict]:
-    """
-    只保留在 used_text 內實際出現的術語（不區分大小寫），並去重。
-    """
-    used = []
-    seen = set()
-    text_l = used_text.lower()
-    for item in glossary or []:
-        term = (item.get("term") or "").strip()
-        defi = (item.get("simple_def_zh") or "").strip()
-        if not term or not defi:
-            continue
-        if term.lower() in seen:
-            continue
-        # 出現即保留（簡單包含判斷；若要更嚴謹可做 token 邊界）
-        if term.lower() in text_l:
-            used.append({"term": term, "simple_def_zh": defi})
-            seen.add(term.lower())
-    return used
-
-
 def _normalize_text(value: Any) -> str:
     """
     將巢狀容器轉成可拼接的字串，避免 list/tuple 導致 join 失敗。
@@ -151,72 +102,125 @@ def _normalize_text(value: Any) -> str:
     return str(value)
 
 
+def _value_or_missing(*values: Any) -> str:
+    """
+    依序回傳第一個有內容的字串，否則標註來源缺失。
+    """
+    for raw in values:
+        text = _normalize_text(raw).strip()
+        if text:
+            return text
+    return "[來源缺失]"
+
+
 BASE_SYSTEM_PROMPT = (
-    "角色：支持型數學家（風格近陶哲軒）。\n\n"
-    "核心準則\n\n"
-    "先釐清：在下結論前，精確定義問題、目標、輸入／輸出、記號與假設。\n\n"
-    "嚴謹為上：每一步推理皆可檢驗；不得以權威取代證明；錯誤與漏洞須明確定位並修正。\n\n"
-    "誠實陳述完成度：若無法完全解決，只給出已證明的重要部分結果，並清晰說明未解的障礙、條件或反例。\n\n"
-    "不逢迎：只評價論證與證據，不迎合立場或能力。\n\n"
-    "反事實挑戰：主動尋找反例、必要條件、最壞情形與極端案例，以檢驗論斷的穩健性。\n\n"
-    "第一性原理：從定義、公理與基本性質出發，少用類比，多用可驗證的邏輯與構造。\n\n"
-    "費曼作風：以簡明語言重述觀念；反覆自檢；允許試錯；以可重現的實驗或計算支撐結論。\n\n"
-    "磨礪求進：遇到阻礙時，分解為子目標、設定里程碑，持續演算與驗證。\n"
+    "角色：你是壯年、嚴謹又帶童心的 ENTP 大數學家（希爾伯特 × 歐拉混合體）。\n"
+    "受眾：全程對 90 歲、聰明好奇但離開學界多年的姥姥講解，語氣溫柔自信，"
+    "開場先說出目前解說的論文名稱。\n"
+    "語言：句子要短、概念要清楚，抽象術語立刻用生活化例子輔助；數學部分保持精煉嚴格。\n"
+    "風格：ENTP 式機智、密集而結構化，勇於提出反例與反詰；遇到資訊不足必說「[來源缺失]」。\n"
+    "證據：所有可驗證主張必附頁碼/圖表/命題等局部引用，格式如 [Lin 2025, Thm 2, p.14]，"
+    "缺資料則標註 [來源缺失]，絕不臆測。\n"
+    "創新：每篇都要提出一個受論文啟發的新 idea，說明可行性、需要的條件，以及如何收斂成有價值的學術工作。\n"
 )
 
-DEFAULT_COGNITIVE_LEVEL = "研究生"
-_COGNITIVE_LEVEL_SPEC = {
-    "本科": "面向高年級大學生，優先建立直觀，減少高等統計符號，必要時以例子輔助。",
-    "研究生": "面向研究生，務必交代關鍵假設、漸近條件與必要資訊（例：可逆費雪資訊、局部錯配階數、QMD 連續性假設）。",
-    "實務": "面向產業實務者，強調決策含義、風險與適用範圍，同時保留必要的統計條件。"
-}
+COMMON_OUTPUT_RULES = (
+    "通用規則：\n"
+    "- 全程使用繁體中文並維持句子短、結構清楚。\n"
+    "- 每個可驗證主張後附引用（例如 [Lin 2025, Thm 2, p.14] 或 [Fig.3, p.7]）。\n"
+    "- 若缺資料或無可查證來源，直接寫 [來源缺失]。\n"
+    "- 盡量使用 Markdown 結構（項目符號、表格、粗體標題）保持可讀性。\n"
+    "- 不限制字數，但需清楚易懂。\n"
+)
 
-
-def _resolve_cognitive_level_name() -> str:
-    raw = os.getenv("TLDR_COGNITIVE_LEVEL", "").strip()
-    if not raw:
-        raw = DEFAULT_COGNITIVE_LEVEL
-    if raw not in _COGNITIVE_LEVEL_SPEC:
-        logger.debug(f"Unknown TLDR_COGNITIVE_LEVEL '{raw}', fallback to '{DEFAULT_COGNITIVE_LEVEL}'.")
-        return DEFAULT_COGNITIVE_LEVEL
-    return raw
-
-
-def _cognitive_level_clause() -> str:
-    level = _resolve_cognitive_level_name()
-    spec = _COGNITIVE_LEVEL_SPEC[level]
-    return f"認知層級設定：{level}。{spec}\n"
-
-
-def _cognitive_level_hint() -> str:
-    level = _resolve_cognitive_level_name()
-    spec = _COGNITIVE_LEVEL_SPEC[level]
-    return f"{level}｜{spec}"
-
-
-def _call_llm(messages: List[Dict[str, str]],
-              temperature: Optional[float] = None,
-              reasoning_hint: Optional[str] = None) -> dict:
-    """
-    呼叫全域 LLM；messages 第一個條目應為 system。
-    - temperature：不同階段取樣溫度
-    - reasoning_hint：插入 system 的內部指示（要求更深思考），不外露
-    回傳：模型應輸出的 JSON 物件；若非 JSON，盡力擷取。
-    """
-    llm = get_llm()
-    sys_boost = ""
-    if reasoning_hint:
-        sys_boost = f"（內部指示：{reasoning_hint}。請勿外露推理過程。）"
-    first = messages[0].copy()
-    first["content"] = first.get("content", "") + sys_boost
-    msgs = [first] + messages[1:]
-
-    try:
-        raw = llm.generate(messages=msgs, temperature=temperature)
-    except TypeError:
-        raw = llm.generate(messages=msgs)
-    return _json_from_text(raw)
-
+SECTION_SPECS = [
+    {
+        "key": "prelude",
+        "label": "前置導覽",
+        "title": "**前置導覽**",
+        "instruction": (
+            "請挑選 3~6 個最抽象或容易卡住的術語／縮寫，每個用 1 句白話解釋並補一句最小數學刻畫，"
+            "可用條列格式 `- 術語：白話；數學刻畫（引用）`。"
+        ),
+    },
+    {
+        "key": "A",
+        "label": "A. 總結敘事",
+        "title": "**A. 總結敘事（問題→障礙→方法→結果→意義）**",
+        "instruction": (
+            "依照「問題→障礙→方法→結果→意義」順序撰寫敘事，逐句附引用。"
+            "結尾新增一行 `**姥姥版一句話**：...` 用日常語概括。"
+        ),
+    },
+    {
+        "key": "B",
+        "label": "B. 術語與縮寫表",
+        "title": "**B. 術語與縮寫表（通俗解釋）**",
+        "instruction": (
+            "製作 Markdown 表格，欄位：名詞/縮寫 | 白話定義 | 在本文的角色 | 相關假設/依賴。"
+            "至少 3 筆。表格後加上一行 `**姥姥版一句話**：...` 提醒用途。"
+        ),
+    },
+    {
+        "key": "C",
+        "label": "C. 嚴謹定義",
+        "title": "**C. 嚴謹解釋術語和縮寫的數學定義**",
+        "instruction": (
+            "對 B 節最核心的術語，給出最小充分且嚴謹的數學描述，可用條列或簡潔公式表示並附引用。"
+            "最後加上 `**姥姥版一句話**：...`。"
+        ),
+    },
+    {
+        "key": "D",
+        "label": "D. 主要貢獻",
+        "title": "**D. 主要貢獻（主編視角）**",
+        "instruction": (
+            "列出本文最重要的貢獻，每項採 `- 貢獻：... → 證據（引用）` 格式，"
+            "明確指出對應的理論、圖表或頁碼。"
+        ),
+    },
+    {
+        "key": "E",
+        "label": "E. 文本分析",
+        "title": "**E. 文本分析（對照前作）**",
+        "instruction": (
+            "建立 Markdown 表格，欄位：前人缺陷 | 本文改進 | 有效機制 | 證據頁碼。"
+            "表格後補 1~2 句說明為何前法不能直接搬用、或本文新意何在。"
+        ),
+    },
+    {
+        "key": "F",
+        "label": "F. 可遷移技巧",
+        "title": "**F. 可遷移的創新技巧（Toolkit）**",
+        "instruction": (
+            "條列本文可複用的技巧，說明可在哪些問題上套用與可能的限制；"
+            "另外提出至少一個受此啟發的新研究 idea，解釋為何可行、需哪些條件、如何收斂為有價值的學術工作。"
+            "最後依序輸出 `**奶奶版一句話**：...` 與 `**生活化例子**：...`。"
+        ),
+    },
+    {
+        "key": "G",
+        "label": "G. 弱點與邏輯 Gap",
+        "title": "**G. 弱點與邏輯 Gap（學術警察）**",
+        "instruction": (
+            "列出最脆弱的假設、資料/評測盲點、外推風險、洩漏、消融缺失、統計檢定不足、"
+            "過度調參或指標偏誤，每項說明為何成為風險並附引用。"
+        ),
+    },
+    {
+        "key": "QA",
+        "label": "連續發問檢核",
+        "title": "### 連續發問檢核",
+        "instruction": (
+            "依序回答四組問題，每組可用條列：\n"
+            "1) 類似問題是否已有他作解決、能否直接沿用、本文新意或真正移除的障礙？\n"
+            "2) 若你是審稿人：拒稿三條最強理由與接收兩條最強理由。\n"
+            "3) 若你是學者：可學到的三個重要技巧/觀念。\n"
+            "4) 若你是 paper machine：可衍生的三個下游任務或研究方向。\n"
+            "全部回答都需附引用或標註 [來源缺失]。"
+        ),
+    },
+]
 
 # ------------------------------
 # ArxivPaper 類別
@@ -228,7 +232,7 @@ class ArxivPaper:
     - render_email 會用到：title, authors, affiliations, arxiv_id, tldr, pdf_url, code_url, score
     - tldr：回傳純文字 TLDR（Markdown 也可讀）
     - tldr_markdown：更適合郵件/前端的 Markdown 版本
-    - tldr_json：完整 JSON（含 stages 與 used_glossary_zh）
+    - tldr_json：提供 structured_digest_markdown 供除錯或外部流程使用
     """
 
     def __init__(self, paper: arxiv.Result):
@@ -423,307 +427,113 @@ class ArxivPaper:
             "contrib_spans": contrib_spans,
         }
 
-    # ---------------- 五個階段的 LLM 呼叫 ----------------
+    # ---------------- 結構化 digest 生成 ----------------
 
-    def _stage1_summary_and_glossary(self) -> dict:
-        """
-        S1：產生摘要精煉與候選術語。
-        """
-        sys = (
-            BASE_SYSTEM_PROMPT +
-            _cognitive_level_clause() +
-            "你要把提供的論文資訊轉成一段 90~130 字的繁體中文敘事，"
-            "遵循「問題→障礙→方法→結果→意義」順序，語句需緊湊且可追溯來源。"
-            "同時列出後續可能需解釋的術語，每個術語給一句白話定義。"
+    def _compose_digest_input_block(self) -> str:
+        ctx = self._ctx_for_tldr
+        authors = []
+        for author in self.authors:
+            name = getattr(author, "name", None) or str(author)
+            name = (name or "").strip()
+            if name:
+                authors.append(name)
+        authors_text = ", ".join(authors)
+        categories = getattr(self._paper, "categories", None)
+        cat_text = ", ".join(categories) if categories else ""
+        venue = _value_or_missing(
+            getattr(self._paper, "journal_ref", ""),
+            getattr(self._paper, "comment", ""),
+            getattr(self._paper, "primary_category", ""),
+            cat_text,
         )
-        user = f"""
-【任務】輸出 JSON 物件，鍵：
-- summary_refined_zh：90~130 字，描述研究脈絡；若資訊不足要說明缺口。
-- glossary_candidates：[{{"term": "<術語>", "simple_def_zh": "<一句白話解釋>"}} ...]。
+        published = getattr(self._paper, "published", None)
+        year_value = getattr(published, "year", None) if published is not None else None
+        year = str(year_value) if year_value else "[來源缺失]"
+        meta_line = f"{_value_or_missing(self.title)}，{_value_or_missing(authors_text)}，{venue}，{year}"
+        entries = [
+            ("題目／作者／年份／會議期刊", meta_line),
+            ("核心問題與動機", _value_or_missing(ctx.get("intro"), ctx.get("abstract"))),
+            ("假設與設定", _value_or_missing(ctx.get("limits"), ctx.get("intro"))),
+            ("方法重點", _value_or_missing(ctx.get("method"), ctx.get("abstract"))),
+            ("數據與評測", _value_or_missing(ctx.get("expts"), ctx.get("method"))),
+            ("定理/引理/命題", "[來源缺失]"),
+            ("圖表與證據", "[來源缺失]"),
+            ("原始碼/資源", _value_or_missing(self.code_url)),
+        ]
+        lines = []
+        for label, raw in entries:
+            text = _normalize_text(raw).strip()
+            if not text:
+                text = "[來源缺失]"
+            text = text.replace("```", "'").replace("`", "'")
+            if "\n" in text:
+                lines.append(f"* {label}：\n```text\n{text}\n```")
+            else:
+                lines.append(f"* {label}：`{text}`")
+        return "\n".join(lines)
 
-【認知層級】{_cognitive_level_hint()}
-【輸入】
-Title: {self._ctx_for_tldr["title"]}
-Abstract: {self._ctx_for_tldr["abstract"]}
-Intro: {self._ctx_for_tldr["intro"]}
-Conclusion: {self._ctx_for_tldr["concl"]}
-""".strip()
-
-        return _call_llm(
-            messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
-            temperature=0.2,
-            reasoning_hint="先萃取核心資訊與前後因，再壓縮成一段敘事"
-        ) or {"summary_refined_zh": "未知", "glossary_candidates": []}
-
-    def _stage2_main_contributions(self, s1: dict) -> dict:
-        """
-        S2：說明主要貢獻。
-        """
-        sys = (
-            BASE_SYSTEM_PROMPT +
-            _cognitive_level_clause() +
-            "你要以導師視角列出本文主要貢獻，必須指出驗證證據或必要條件。"
-            "請以繁體中文撰寫 90~130 字，資訊不足時需註明。"
+    def _build_section_prompt(self, section_spec: Dict[str, str]) -> str:
+        inputs_block = self._compose_digest_input_block()
+        label = section_spec["label"]
+        return (
+            f"目前你正在向 90 歲聰明的姥姥講解《{_value_or_missing(self.title)}》，"
+            f"請專注產出「{label}」部分。\n\n"
+            f"【可用資訊】\n{inputs_block}\n\n"
+            f"【該部分任務】\n{section_spec['instruction']}\n\n"
+            f"{COMMON_OUTPUT_RULES}"
         )
-        user = f"""
-【任務】只輸出 JSON，鍵：
-- main_contributions_zh：90~130 字，高密度描述本文的核心貢獻與支撐證據。
 
-【認知層級】{_cognitive_level_hint()}
-【可引用的名詞解釋（候選）】
-{json.dumps(s1.get("glossary_candidates", []), ensure_ascii=False)}
-
-【輸入】
-Title: {self._ctx_for_tldr["title"]}
-Abstract: {self._ctx_for_tldr["abstract"]}
-Contrib-like sentences: {self._ctx_for_tldr["contrib_spans"]}
-Method: {self._ctx_for_tldr["method"]}
-Experiments/Results: {self._ctx_for_tldr["expts"]}
-""".strip()
-        return _call_llm(
-            messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
-            temperature=0.35,
-            reasoning_hint="先列可能的貢獻與證據，再合併成一段細節充足的描述"
-        ) or {"main_contributions_zh": "未知"}
-
-    def _stage3_innovations(self, s1: dict, s2: dict) -> dict:
-        """
-        S3：萃取可用創新技巧。
-        """
-        sys = (
-            BASE_SYSTEM_PROMPT +
-            _cognitive_level_clause() +
-            "你要提煉本文可複現的創新技巧，描述操作步驟、需要的條件與驗證訊號。"
-            "若技巧合理性存疑，要明確標註風險或尚未驗證的假設。"
-        )
-        user = f"""
-【任務】輸出 JSON，鍵：
-- usable_innovations_zh：110~150 字，條理化說明 1~3 個創新技巧，需涵蓋操作步驟、必要條件與驗證訊號；若缺乏佐證請註明風險。
-
-【認知層級】{_cognitive_level_hint()}
-【前序資訊】
-summary_refined_zh: {s1.get("summary_refined_zh","")}
-main_contributions_zh: {s2.get("main_contributions_zh","")}
-
-【輸入】
-Method: {self._ctx_for_tldr["method"]}
-Experiments/Results: {self._ctx_for_tldr["expts"]}
-""".strip()
-        return _call_llm(
-            messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
-            temperature=0.4,
-            reasoning_hint="列舉候選技巧，評估條件與風險後組成高密度敘述"
-        ) or {"usable_innovations_zh": "未知"}
-
-    def _stage4_prior_and_improvement(self, s1: dict, s2: dict, s3: dict) -> dict:
-        """
-        S4：比較前人弱點與本文改進。
-        """
-        sys = (
-            BASE_SYSTEM_PROMPT +
-            _cognitive_level_clause() +
-            "你要評估過往方法的關鍵缺陷，並逐點對應本文的改進及其有效機制。"
-            "輸出需包含缺陷、對應改進與為何生效，語氣務實。"
-        )
-        user = f"""
-【任務】輸出 JSON，鍵：
-- prior_weakness_and_improvement_zh：110~150 字，按照「前人弱點 → 本文改進 → 為何有效」順序撰寫；若資料不足須註明。
-
-【認知層級】{_cognitive_level_hint()}
-【前序資訊】
-summary_refined_zh: {s1.get("summary_refined_zh","")}
-main_contributions_zh: {s2.get("main_contributions_zh","")}
-usable_innovations_zh: {s3.get("usable_innovations_zh","")}
-
-【輸入】
-Intro: {self._ctx_for_tldr["intro"]}
-Method: {self._ctx_for_tldr["method"]}
-Experiments/Results: {self._ctx_for_tldr["expts"]}
-Limitations/Discussion: {self._ctx_for_tldr["limits"]}
-""".strip()
-        return _call_llm(
-            messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
-            temperature=0.45,
-            reasoning_hint="建立缺陷清單，再與創新逐點對應，確認機制後輸出"
-        ) or {"prior_weakness_and_improvement_zh": "未知"}
-
-    def _stage5_weaknesses(self, s1: dict, s2: dict, s3: dict, s4: dict) -> dict:
-        """
-        S5：指出文章弱點與推理缺口。
-        """
-        sys = (
-            BASE_SYSTEM_PROMPT +
-            _cognitive_level_clause() +
-            "你是誠實直接的仲裁者，要指出本文最脆弱的假設、資料/實驗盲點與推理缺口，"
-            "並說明最容易失效的場景。"
-        )
-        user = f"""
-【任務】輸出 JSON，鍵：
-- paper_weakness_reasoning_gap_zh：110~150 字，描述最嚴重的弱點、缺乏驗證的假設與可能失效情境；若資訊不足須明示。
-
-【認知層級】{_cognitive_level_hint()}
-【前序資訊】
-summary_refined_zh: {s1.get("summary_refined_zh","")}
-main_contributions_zh: {s2.get("main_contributions_zh","")}
-usable_innovations_zh: {s3.get("usable_innovations_zh","")}
-prior_weakness_and_improvement_zh: {s4.get("prior_weakness_and_improvement_zh","")}
-
-【輸入】
-Experiments/Results: {self._ctx_for_tldr["expts"]}
-Limitations/Discussion: {self._ctx_for_tldr["limits"]}
-""".strip()
-        return _call_llm(
-            messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
-            temperature=0.45,
-            reasoning_hint="列出風險與缺口，檢查是否有佐證，再挑出最嚴重者"
-        ) or {"paper_weakness_reasoning_gap_zh": "未知"}
-
-    def _build_glossary(self, merged: dict) -> List[dict]:
-        """
-        根據最終段落與候選術語，產生補充解釋清單。
-        """
-        candidates = merged.get("glossary_candidates", []) or []
-        sections = {
-            "摘要精煉": merged.get("summary_refined_zh", ""),
-            "主要貢獻": merged.get("main_contributions_zh", ""),
-            "可用創新技巧": merged.get("usable_innovations_zh", ""),
-            "前人弱點和本文改進": merged.get("prior_weakness_and_improvement_zh", ""),
-            "文章弱點和Reasoning Gap": merged.get("paper_weakness_reasoning_gap_zh", ""),
-        }
-        sections_text = "\n".join(f"{k}：{_normalize_text(v)}" for k, v in sections.items())
-        sys = (
-            BASE_SYSTEM_PROMPT +
-            _cognitive_level_clause() +
-            "你要整理上列段落中的專有名詞、統計條件與假設，"
-            "確保「補充解釋」涵蓋每一個需要釐清的術語，尤其是弱點段所提到的條件。"
-            "輸出需保持高密度且避免冗語。"
-        )
-        user = f"""
-【任務】輸出 JSON 陣列，格式為 [{{"term": "...", "simple_def_zh": "..."}}]。
-- 覆蓋所有段落中出現、讀者可能陌生的術語或假設（例：可逆費雪資訊、QMD、錯配階數）。
-- 優先沿用候選術語的定義，必要時補充或調整。
-- 每個解釋 1~2 句，符合認知層級要求；避免重複或無意義的詞條。
-- 若完全不需要補充，請輸出 []。
-
-【認知層級】{_cognitive_level_hint()}
-【候選術語】{json.dumps(candidates, ensure_ascii=False)}
-【段落】{sections_text}
-""".strip()
-
-        glossary_items: List[dict] = []
+    def _generate_section_content(self, section_spec: Dict[str, str]) -> str:
+        llm = get_llm()
+        prompt = self._build_section_prompt(section_spec)
+        system_prompt = BASE_SYSTEM_PROMPT
         try:
-            result = _call_llm(
-                messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
+            output = llm.generate(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt},
+                ],
                 temperature=0.2,
-                reasoning_hint="逐段檢視術語，對缺漏項補齊定義並去重"
             )
+            if not output or not output.strip():
+                raise ValueError("empty output")
+            return output.strip()
         except Exception as exc:
-            logger.warning(f"Glossary generation failed for {self.arxiv_id}: {exc}")
-            result = None
-
-        items = []
-        if isinstance(result, list):
-            items = result
-        elif isinstance(result, dict):
-            if isinstance(result.get("glossary"), list):
-                items = result["glossary"]
-            elif isinstance(result.get("items"), list):
-                items = result["items"]
-
-        seen = set()
-        for entry in items or []:
-            if not isinstance(entry, dict):
-                continue
-            term = _normalize_text(entry.get("term")).strip()
-            defi = _normalize_text(entry.get("simple_def_zh")).strip()
-            if not term or not defi:
-                continue
-            key = term.lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            glossary_items.append({"term": term, "simple_def_zh": defi})
-
-        if not glossary_items:
-            return _filter_glossary_by_usage(candidates, " ".join(sections.values()))
-        return glossary_items
-
-    # ---------------- 最終 TLDR 組裝 ----------------
+            logger.error(f"Failed to generate section '{section_spec['key']}' for {self.arxiv_id}: {exc}")
+            return "[來源缺失]"
 
     @cached_property
-    def tldr_json(self) -> dict:
-        """
-        分階段生成與合併，回傳 JSON：
-          keys: summary_refined_zh, main_contributions_zh, usable_innovations_zh,
-                prior_weakness_and_improvement_zh, paper_weakness_reasoning_gap_zh,
-                glossary_candidates, used_glossary_zh, stages
-        """
-        s1 = self._stage1_summary_and_glossary()
-        s2 = self._stage2_main_contributions(s1)
-        s3 = self._stage3_innovations(s1, s2)
-        s4 = self._stage4_prior_and_improvement(s1, s2, s3)
-        s5 = self._stage5_weaknesses(s1, s2, s3, s4)
+    def digest_sections(self) -> Dict[str, str]:
+        sections: Dict[str, str] = {}
+        for spec in SECTION_SPECS:
+            sections[spec["key"]] = self._generate_section_content(spec)
+        return sections
 
-        merged = {
-            "summary_refined_zh": s1.get("summary_refined_zh", "未知"),
-            "main_contributions_zh": s2.get("main_contributions_zh", "未知"),
-            "usable_innovations_zh": s3.get("usable_innovations_zh", "未知"),
-            "prior_weakness_and_improvement_zh": s4.get("prior_weakness_and_improvement_zh", "未知"),
-            "paper_weakness_reasoning_gap_zh": s5.get("paper_weakness_reasoning_gap_zh", "未知"),
-            "glossary_candidates": s1.get("glossary_candidates", []),
-            "stages": {"s1": s1, "s2": s2, "s3": s3, "s4": s4, "s5": s5},
-        }
+    def _generate_structured_digest_markdown(self) -> str:
+        blocks = []
+        for spec in SECTION_SPECS:
+            body = self.digest_sections.get(spec["key"], "[來源缺失]") or "[來源缺失]"
+            blocks.append(f"{spec['title']}\n{body.strip()}")
+        return "\n\n".join(blocks)
 
-        merged["used_glossary_zh"] = self._build_glossary(merged)
-        return merged
+    @cached_property
+    def digest_markdown(self) -> str:
+        return self._generate_structured_digest_markdown()
 
     @cached_property
     def tldr(self) -> str:
-        """
-        純文字 TLDR（Markdown 也可讀），嚴格依你指定的版面：
-        1. 摘要精煉
-        2. 主要貢獻
-        3. 可用創新技巧
-        4. 前人弱點和本文改進
-        5. 文章弱點和 Reasoning Gap
-        6. 補充解釋
-        """
-        d = self.tldr_json
-        # 補充解釋只列 TLDR 內實際出現的術語
-        if d.get("used_glossary_zh"):
-            glossary_text = "；".join(f"{e['term']}：{e['simple_def_zh']}" for e in d["used_glossary_zh"])
-        else:
-            glossary_text = "無需特別解釋的術語。"
-
-        lines = [
-            f"1. 摘要精煉：{d.get('summary_refined_zh','未知')}",
-            f"2. 主要貢獻：{d.get('main_contributions_zh','未知')}",
-            f"3. 可用創新技巧：{d.get('usable_innovations_zh','未知')}",
-            f"4. 前人弱點和本文改進：{d.get('prior_weakness_and_improvement_zh','未知')}",
-            f"5. 文章弱點和Reasoning Gap：{d.get('paper_weakness_reasoning_gap_zh','未知')}",
-            f"6. 補充解釋：{glossary_text}",
-        ]
-        return "\n".join(lines)
+        return self.digest_markdown
 
     @cached_property
     def tldr_markdown(self) -> str:
-        """
-        Markdown 版本（更易掃讀）。
-        """
-        d = self.tldr_json
-        if d.get("used_glossary_zh"):
-            exp_md = "；".join([f"**{e['term']}**：{e['simple_def_zh']}" for e in d.get("used_glossary_zh", [])])
-        else:
-            exp_md = "無需特別解釋的術語。"
-        md = (
-            f"1. **摘要精煉**：{d.get('summary_refined_zh','未知')}\n"
-            f"2. **主要貢獻**：{d.get('main_contributions_zh','未知')}\n"
-            f"3. **可用創新技巧**：{d.get('usable_innovations_zh','未知')}\n"
-            f"4. **前人弱點和本文改進**：{d.get('prior_weakness_and_improvement_zh','未知')}\n"
-            f"5. **文章弱點和Reasoning Gap**：{d.get('paper_weakness_reasoning_gap_zh','未知')}\n"
-            f"6. **補充解釋**：{exp_md}\n"
-        )
-        return md
+        return self.digest_markdown
+
+    @cached_property
+    def tldr_json(self) -> dict:
+        return {
+            "structured_digest_markdown": self.digest_markdown,
+            "sections": self.digest_sections,
+        }
 
     # ---------------- affiliations：從 LaTeX 抽取作者單位 ----------------
 
