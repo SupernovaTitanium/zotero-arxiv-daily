@@ -299,6 +299,11 @@ class ArxivPaper:
         回傳 dict：{<filename>.tex: <content>, ..., "all": <main_merged_or_None>}
         若源檔不存在（404），回傳 None（後續流程會降級只用摘要）。
         """
+        pdf_url = getattr(self._paper, "pdf_url", None)
+        if not pdf_url:
+            logger.warning(f"No pdf_url for {self.arxiv_id}. Skipping source download and falling back to abstract.")
+            return None
+
         with ExitStack() as stack:
             tmpdirname = stack.enter_context(TemporaryDirectory())
             try:
@@ -310,6 +315,12 @@ class ArxivPaper:
                 else:
                     logger.error(f"HTTP Error {e.code} when downloading source for {self.arxiv_id}: {e.reason}")
                     raise
+            except AttributeError as e:
+                logger.warning(
+                    f"Download source failed for {self.arxiv_id} because pdf_url is missing: {e}. "
+                    "Falling back to abstract-only processing."
+                )
+                return None
             try:
                 tar = stack.enter_context(tarfile.open(file))
             except tarfile.ReadError:
