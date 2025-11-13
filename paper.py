@@ -261,8 +261,22 @@ class ArxivPaper:
 
     @property
     def pdf_url(self) -> str:
-        return self._paper.pdf_url
+        pdf_url = getattr(self._paper, "pdf_url", None)
+        if pdf_url:
+            return pdf_url
 
+        pdf_url = f"https://arxiv.org/pdf/{self.arxiv_id}.pdf"
+        links = getattr(self._paper, "links", None)
+        if links:
+            first_link = links[0]
+            href = getattr(first_link, "href", None)
+            if href:
+                pdf_url = href.replace('abs', 'pdf')
+
+        # Cache the derived URL so downstream download calls succeed (Issue #119).
+        self._paper.pdf_url = pdf_url
+        return pdf_url
+    
     @cached_property
     def code_url(self) -> Optional[str]:
         """
@@ -320,6 +334,9 @@ class ArxivPaper:
                     f"Download source failed for {self.arxiv_id} because pdf_url is missing: {e}. "
                     "Falling back to abstract-only processing."
                 )
+                return None
+            except Exception as e:
+                logger.error(f"Error when downloading source for {self.arxiv_id}: {e}")
                 return None
             try:
                 tar = stack.enter_context(tarfile.open(file))

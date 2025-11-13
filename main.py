@@ -1,20 +1,39 @@
-import arxiv
 import argparse
 import os
 import sys
+from tempfile import mkstemp
+
+import arxiv
+import feedparser
 from dotenv import load_dotenv
+from gitignore_parser import parse_gitignore
+from loguru import logger
+from pyzotero import zotero
+from tqdm import trange, tqdm
+
+from construct_email import render_email, send_email
+from llm import set_global_llm
+from paper import ArxivPaper
+from recommender import rerank_paper
+
 load_dotenv(override=True)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-from pyzotero import zotero
-from recommender import rerank_paper
-from construct_email import render_email, send_email
-from tqdm import trange,tqdm
-from loguru import logger
-from gitignore_parser import parse_gitignore
-from tempfile import mkstemp
-from paper import ArxivPaper
-from llm import set_global_llm
-import feedparser
+
+
+def _get_pdf_url_patch(links) -> str:
+    """
+    Finds the PDF link among a result's links and returns its URL.
+    Should only be called once for a given `Result`, in its constructor.
+    After construction, the URL should be available in `Result.pdf_url`.
+    """
+    pdf_urls = [link.href for link in links if "pdf" in link.href]
+    if len(pdf_urls) == 0:
+        return None
+    return pdf_urls[0]
+
+
+arxiv.Result._get_pdf_url = _get_pdf_url_patch
+
 
 def get_zotero_corpus(id:str,key:str) -> list[dict]:
     zot = zotero.Zotero(id, 'user', key)
@@ -55,8 +74,8 @@ def get_arxiv_paper(query:str, debug:bool=False) -> list[ArxivPaper]:
         papers = []
         all_paper_ids = [i.id.removeprefix("oai:arXiv.org:") for i in feed.entries if i.arxiv_announce_type == 'new']
         bar = tqdm(total=len(all_paper_ids),desc="Retrieving Arxiv papers")
-        for i in range(0,len(all_paper_ids),50):
-            search = arxiv.Search(id_list=all_paper_ids[i:i+50])
+        for i in range(0,len(all_paper_ids),20):
+            search = arxiv.Search(id_list=all_paper_ids[i:i+20])
             batch = [ArxivPaper(p) for p in client.results(search)]
             bar.update(len(batch))
             papers.extend(batch)
@@ -183,4 +202,3 @@ if __name__ == '__main__':
     logger.info("Sending email...")
     send_email(args.sender, args.receiver, args.sender_password, args.smtp_server, args.smtp_port, html)
     logger.success("Email sent successfully! If you don't receive the email, please check the configuration and the junk box.")
-
