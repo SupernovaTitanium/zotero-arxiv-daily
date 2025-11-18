@@ -9,6 +9,8 @@ import datetime
 import time
 from loguru import logger
 from markdown import markdown as md_to_html
+import html
+import re
 framework = """
 <!DOCTYPE HTML>
 <html>
@@ -47,6 +49,63 @@ To unsubscribe, remove your email in your Github Action setting.
 </html>
 """
 
+SUMMARY_CHAR_LIMIT = 100
+
+
+def _strip_html_tags(html_content: str) -> str:
+    if not html_content:
+        return ""
+    text = re.sub(r"<[^>]+>", " ", html_content)
+    text = html.unescape(text)
+    return " ".join(text.split())
+
+
+def _build_super_summary(body_html: str, limit: int = SUMMARY_CHAR_LIMIT) -> str:
+    """
+    Compresses the Markdown→HTML body into a <= limit character snippet for the intro section.
+    """
+    plain = _strip_html_tags(body_html)
+    if not plain:
+        plain = "此篇目前沒有產生內容"
+    if len(plain) <= limit:
+        return plain
+    return plain[:limit].rstrip() + "…"
+
+
+def _anchor_from_arxiv_id(arxiv_id: str) -> str:
+    """
+    Stable anchor for in-mail jump links.
+    """
+    base = f"paper-{arxiv_id}".replace("/", "-")
+    return re.sub(r"[^a-zA-Z0-9_-]", "-", base)
+
+
+def _build_summary_section(items: list[dict]) -> str:
+    """
+    Renders the compact super summary list with jump links.
+    """
+    if not items:
+        return ""
+    list_items = []
+    for item in items:
+        list_items.append(
+            f'<li style="margin-bottom: 8px;"><a href="#{item["anchor_id"]}" '
+            f'style="text-decoration: none; color: #333;"><strong>{item["title"]}</strong>：'
+            f'{item["summary"]}</a></li>'
+        )
+    list_html = "\n".join(list_items)
+    return f"""
+<div style="border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #fff5e6; font-family: Arial, sans-serif; font-size: 14px; color: #333; line-height: 1.5;">
+  <div style="font-size: 18px; font-weight: bold; margin-bottom: 8px;">今日超級速覽</div>
+  <ul style="margin: 0; padding-left: 20px;">
+    {list_html}
+  </ul>
+  <div style="margin-top: 12px;">
+    <a href="#detailed-section" style="color: #d9534f; text-decoration: none; font-weight: bold;">點我看詳細內容 ⟶</a>
+  </div>
+</div>
+"""
+
 def get_empty_html():
   block_template = """
   <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: Arial, sans-serif; border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f9f9f9;">
@@ -59,10 +118,11 @@ def get_empty_html():
   """
   return block_template
 
-def get_block_html(title:str, authors:str, rate:str,arxiv_id:str, abstract:str, pdf_url:str, code_url:str=None, affiliations:str=None):
+def get_block_html(title:str, authors:str, rate:str,arxiv_id:str, abstract:str, pdf_url:str, code_url:str=None, affiliations:str=None, block_id:str=None):
     code = f'<a href="{code_url}" style="display: inline-block; text-decoration: none; font-size: 14px; font-weight: bold; color: #fff; background-color: #5bc0de; padding: 8px 16px; border-radius: 4px; margin-left: 8px;">Code</a>' if code_url else ''
+    table_id_attr = f'id="{block_id}"' if block_id else ''
     block_template = """
-    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: Arial, sans-serif; border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f9f9f9;">
+    <table {table_id_attr} border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: Arial, sans-serif; border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f9f9f9;">
     <tr>
         <td style="font-size: 20px; font-weight: bold; color: #333;">
             {title}
@@ -99,7 +159,7 @@ def get_block_html(title:str, authors:str, rate:str,arxiv_id:str, abstract:str, 
     </tr>
 </table>
 """
-    return block_template.format(title=title, authors=authors,rate=rate,arxiv_id=arxiv_id, abstract=abstract, pdf_url=pdf_url, code=code, affiliations=affiliations)
+    return block_template.format(title=title, authors=authors,rate=rate,arxiv_id=arxiv_id, abstract=abstract, pdf_url=pdf_url, code=code, affiliations=affiliations, table_id_attr=table_id_attr)
 
 def get_stars(score:float):
     full_star = '<span class="full-star">⭐</span>'
@@ -119,7 +179,8 @@ def get_stars(score:float):
 
 
 def render_email(papers:list[ArxivPaper]):
-    parts = []
+    detail_parts = []
+    summary_items = []
     if len(papers) == 0 :
         return framework.replace('__CONTENT__', get_empty_html())
     
@@ -148,10 +209,20 @@ def render_email(papers:list[ArxivPaper]):
             output_format="html5",
         )
 
-        parts.append(get_block_html(p.title, authors, rate, p.arxiv_id, body_html, p.pdf_url, p.code_url, affiliations))
+        anchor_id = _anchor_from_arxiv_id(p.arxiv_id)
+        summary_items.append(
+            {
+                "title": p.title,
+                "summary": _build_super_summary(body_html),
+                "anchor_id": anchor_id,
+            }
+        )
+        detail_parts.append(get_block_html(p.title, authors, rate, p.arxiv_id, body_html, p.pdf_url, p.code_url, affiliations, block_id=anchor_id))
         time.sleep(10)
 
-    content = '<br>' + '</br><br>'.join(parts) + '</br>'
+    summary_section = _build_summary_section(summary_items)
+    details_html = '<br>' + '</br><br>'.join(detail_parts) + '</br>'
+    content = summary_section + '<br><a id="detailed-section"></a>' + details_html
     return framework.replace('__CONTENT__', content)
 
 def send_email(sender:str, receiver:str, password:str,smtp_server:str,smtp_port:int, html:str,):
