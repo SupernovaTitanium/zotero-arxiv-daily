@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  smoke:
+  end-to-end:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -17,11 +17,24 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Run smoke tests
+      - name: Run end-to-end validation
+        env:
+          ZOTERO_ID: ${{ secrets.TEST_ZOTERO_ID }}
+          ZOTERO_KEY: ${{ secrets.TEST_ZOTERO_KEY }}
+          ZOTERO_IGNORE: ${{ secrets.TEST_ZOTERO_IGNORE }}
+          SEND_EMPTY: "true"
+          MAX_PAPER_NUM: "5"
+          ARXIV_QUERY: ${{ secrets.TEST_ARXIV_QUERY }}
+          SMTP_SERVER: ${{ secrets.TEST_SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.TEST_SMTP_PORT }}
+          SENDER: ${{ secrets.TEST_SENDER }}
+          RECEIVER: ${{ secrets.TEST_RECEIVER }}
+          SENDER_PASSWORD: ${{ secrets.TEST_SENDER_PASSWORD }}
+          USE_LLM_API: "1"
+          OPENAI_API_KEY: ${{ secrets.TEST_OPENAI_API_KEY }}
+          OPENAI_API_BASE: ${{ secrets.TEST_OPENAI_API_BASE }}
+          MODEL_NAME: ${{ secrets.TEST_MODEL_NAME }}
+          LANGUAGE: ${{ secrets.TEST_LANGUAGE }}
         run: |
-          uv run python -m compileall \
-            construct_email.py \
-            main.py \
-            paper.py \
-            recommender.py \
-            llm.py
+          set -euo pipefail
+          uv run main.py --debug
