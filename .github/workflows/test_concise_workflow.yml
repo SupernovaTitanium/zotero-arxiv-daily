@@ -1,0 +1,37 @@
+name: Test concise workflow
+on:
+  workflow_dispatch:
+
+jobs:
+  end-to-end:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: '0.5.4'
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run end-to-end validation
+        env:
+          SEND_EMPTY: "true"
+          MAX_PAPER_NUM: "5"
+          ARXIV_QUERY: ${{ secrets.TEST_ARXIV_QUERY }}
+          SMTP_SERVER: ${{ secrets.TEST_SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.TEST_SMTP_PORT }}
+          SENDER: ${{ secrets.TEST_SENDER }}
+          RECEIVER: ${{ secrets.TEST_RECEIVER }}
+          SENDER_PASSWORD: ${{ secrets.TEST_SENDER_PASSWORD }}
+          USE_LLM_API: "1"
+          OPENAI_API_KEY: ${{ secrets.TEST_OPENAI_API_KEY }}
+          OPENAI_API_BASE: ${{ secrets.TEST_OPENAI_API_BASE }}
+          MODEL_NAME: ${{ secrets.TEST_MODEL_NAME }}
+          LANGUAGE: ${{ secrets.TEST_LANGUAGE }}
+        run: |
+          set -euo pipefail
+          uv run main.py --debug --skip_zotero
