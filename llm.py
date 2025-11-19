@@ -1,4 +1,4 @@
-from llama_cpp import Llama
+
 from openai import OpenAI
 from loguru import logger
 from time import sleep
@@ -24,6 +24,7 @@ class LLM:
         if api_key:
             self.llm = OpenAI(api_key=api_key, base_url=base_url)
         else:
+            from llama_cpp import Llama
             self.llm = Llama.from_pretrained(
                 repo_id="Qwen/Qwen2.5-3B-Instruct-GGUF",
                 filename="qwen2.5-3b-instruct-q4_k_m.gguf",

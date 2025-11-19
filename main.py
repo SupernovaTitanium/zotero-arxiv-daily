@@ -14,7 +14,7 @@ from tqdm import trange, tqdm
 from construct_email import render_email, send_email
 from llm import set_global_llm
 from paper import ArxivPaper
-from recommender import rerank_paper
+
 
 load_dotenv(override=True)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -122,6 +122,7 @@ if __name__ == '__main__':
     add_argument('--zotero_id', type=str, help='Zotero user ID')
     add_argument('--zotero_key', type=str, help='Zotero API key')
     add_argument('--zotero_ignore',type=str,help='Zotero collection to ignore, using gitignore-style pattern.')
+    add_argument('--skip_zotero', type=bool, help='Skip Zotero corpus retrieval', default=False)
     add_argument('--send_empty', type=bool, help='If get no arxiv paper, send empty email',default=False)
     add_argument('--max_paper_num', type=int, help='Maximum number of papers to recommend',default=100)
     add_argument('--arxiv_query', type=str, help='Arxiv search query')
@@ -173,13 +174,17 @@ if __name__ == '__main__':
         logger.remove()
         logger.add(sys.stdout, level="INFO")
 
-    logger.info("Retrieving Zotero corpus...")
-    corpus = get_zotero_corpus(args.zotero_id, args.zotero_key)
-    logger.info(f"Retrieved {len(corpus)} papers from Zotero.")
-    if args.zotero_ignore:
-        logger.info(f"Ignoring papers in:\n {args.zotero_ignore}...")
-        corpus = filter_corpus(corpus, args.zotero_ignore)
-        logger.info(f"Remaining {len(corpus)} papers after filtering.")
+    if not args.skip_zotero:
+        logger.info("Retrieving Zotero corpus...")
+        corpus = get_zotero_corpus(args.zotero_id, args.zotero_key)
+        logger.info(f"Retrieved {len(corpus)} papers from Zotero.")
+        if args.zotero_ignore:
+            logger.info(f"Ignoring papers in:\n {args.zotero_ignore}...")
+            corpus = filter_corpus(corpus, args.zotero_ignore)
+            logger.info(f"Remaining {len(corpus)} papers after filtering.")
+    else:
+        logger.info("Skipping Zotero corpus retrieval.")
+        corpus = []
     logger.info("Retrieving Arxiv papers...")
     papers = get_arxiv_paper(args.arxiv_query, args.debug)
     if len(papers) == 0:
@@ -187,8 +192,14 @@ if __name__ == '__main__':
         if not args.send_empty:
           exit(0)
     else:
-        logger.info("Reranking papers...")
-        papers = rerank_paper(papers, corpus)
+        if len(corpus) > 0:
+            logger.info("Reranking papers...")
+            from recommender import rerank_paper
+            papers = rerank_paper(papers, corpus)
+        else:
+            logger.info("No Zotero corpus found or skipped. Assigning default score.")
+            for p in papers:
+                p.score = 10.0
         if args.max_paper_num != -1:
             papers = papers[:args.max_paper_num]
         if args.use_llm_api:

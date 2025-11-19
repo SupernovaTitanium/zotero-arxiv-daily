@@ -60,16 +60,7 @@ def _strip_html_tags(html_content: str) -> str:
     return " ".join(text.split())
 
 
-def _build_super_summary(body_html: str, limit: int = SUMMARY_CHAR_LIMIT) -> str:
-    """
-    Compresses the Markdown→HTML body into a <= limit character snippet for the intro section.
-    """
-    plain = _strip_html_tags(body_html)
-    if not plain:
-        plain = "此篇目前沒有產生內容"
-    if len(plain) <= limit:
-        return plain
-    return plain[:limit].rstrip() + "…"
+
 
 
 def _anchor_from_arxiv_id(arxiv_id: str) -> str:
@@ -213,7 +204,7 @@ def render_email(papers:list[ArxivPaper]):
         summary_items.append(
             {
                 "title": p.title,
-                "summary": _build_super_summary(body_html),
+                "summary": p.teaser,
                 "anchor_id": anchor_id,
             }
         )
