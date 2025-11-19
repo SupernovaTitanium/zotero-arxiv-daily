@@ -110,7 +110,7 @@ def add_argument(*args, **kwargs):
     env_value = get_env(env_name)
     if env_value is not None:
         #convert env_value to the specified type
-        if kwargs.get('type') == bool:
+        if kwargs.get('type') == bool or kwargs.get('action') == 'store_true':
             env_value = env_value.lower() in ['true','1']
         else:
             env_value = kwargs.get('type')(env_value)
@@ -122,7 +122,7 @@ if __name__ == '__main__':
     add_argument('--zotero_id', type=str, help='Zotero user ID')
     add_argument('--zotero_key', type=str, help='Zotero API key')
     add_argument('--zotero_ignore',type=str,help='Zotero collection to ignore, using gitignore-style pattern.')
-    add_argument('--skip_zotero', type=bool, help='Skip Zotero corpus retrieval', default=False)
+    add_argument('--skip_zotero', action='store_true', help='Skip Zotero corpus retrieval')
     add_argument('--send_empty', type=bool, help='If get no arxiv paper, send empty email',default=False)
     add_argument('--max_paper_num', type=int, help='Maximum number of papers to recommend',default=100)
     add_argument('--arxiv_query', type=str, help='Arxiv search query')
