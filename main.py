@@ -65,14 +65,17 @@ def filter_corpus(corpus:list[dict], pattern:str) -> list[dict]:
     return new_corpus
 
 
-def get_arxiv_paper(query:str, debug:bool=False) -> list[ArxivPaper]:
+def get_arxiv_paper(query:str, max_results:int=None, debug:bool=False) -> list[ArxivPaper]:
     client = arxiv.Client(num_retries=10,delay_seconds=10)
-    feed = feedparser.parse(f"https://rss.arxiv.org/atom/{query}")
-    if 'Feed error for query' in feed.feed.title:
-        raise Exception(f"Invalid ARXIV_QUERY: {query}.")
     if not debug:
+        feed = feedparser.parse(f"https://rss.arxiv.org/atom/{query}")
+        if 'Feed error for query' in feed.feed.title:
+            raise Exception(f"Invalid ARXIV_QUERY: {query}.")
         papers = []
         all_paper_ids = [i.id.removeprefix("oai:arXiv.org:") for i in feed.entries if i.arxiv_announce_type == 'new']
+        if max_results is not None:
+            all_paper_ids = all_paper_ids[:max_results]
+        
         bar = tqdm(total=len(all_paper_ids),desc="Retrieving Arxiv papers")
         for i in range(0,len(all_paper_ids),20):
             search = arxiv.Search(id_list=all_paper_ids[i:i+20])
@@ -82,12 +85,13 @@ def get_arxiv_paper(query:str, debug:bool=False) -> list[ArxivPaper]:
         bar.close()
 
     else:
-        logger.debug("Retrieve 5 arxiv papers regardless of the date.")
-        search = arxiv.Search(query='cat:cs.AI', sort_by=arxiv.SortCriterion.SubmittedDate)
+        limit = max_results if max_results else 5
+        logger.debug(f"Retrieve {limit} arxiv papers regardless of the date.")
+        search = arxiv.Search(query=query, sort_by=arxiv.SortCriterion.SubmittedDate)
         papers = []
         for i in client.results(search):
             papers.append(ArxivPaper(i))
-            if len(papers) == 5:
+            if len(papers) == limit:
                 break
 
     return papers
@@ -186,7 +190,9 @@ if __name__ == '__main__':
         logger.info("Skipping Zotero corpus retrieval.")
         corpus = []
     logger.info("Retrieving Arxiv papers...")
-    papers = get_arxiv_paper(args.arxiv_query, args.debug)
+    # If skipping Zotero, we don't need to fetch all papers for reranking, so we can limit early.
+    fetch_limit = args.max_paper_num if args.skip_zotero else None
+    papers = get_arxiv_paper(args.arxiv_query, max_results=fetch_limit, debug=args.debug)
     if len(papers) == 0:
         logger.info("No new papers found. Yesterday maybe a holiday and no one submit their work :). If this is not the case, please check the ARXIV_QUERY.")
         if not args.send_empty:
