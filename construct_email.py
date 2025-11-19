@@ -81,7 +81,7 @@ def _build_summary_section(items: list[dict]) -> str:
     for item in items:
         list_items.append(
             f'<li style="margin-bottom: 8px;"><a href="#{item["anchor_id"]}" '
-            f'style="text-decoration: none; color: #333;"><strong>{item["title"]}</strong>：'
+            f'style="text-decoration: none; color: #333;"><strong>{item["title"]}</strong> <span style="color: #666; font-size: 0.9em;">({item["authors"]})</span>：'
             f'{item["summary"]}</a></li>'
         )
     list_html = "\n".join(list_items)
@@ -204,6 +204,7 @@ def render_email(papers:list[ArxivPaper]):
         summary_items.append(
             {
                 "title": p.title,
+                "authors": ', '.join(author_list),
                 "summary": p.teaser,
                 "anchor_id": anchor_id,
             }
