@@ -82,8 +82,9 @@ def _build_summary_section(items: list[dict]) -> str:
     for item in items:
         list_items.append(
             f'<li style="margin-bottom: 8px;"><a href="#{item["anchor_id"]}" '
-            f'style="text-decoration: none; color: #333;"><strong>{item["title"]}</strong> <span style="color: #666; font-size: 0.9em;">({item["authors"]})</span>：'
-            f'{item["summary"]}</a></li>'
+            f'style="color: #d9534f; text-decoration: underline; font-weight: 700;">🔗 {item["title"]}</a> '
+            f'<span style="color: #666; font-size: 0.9em;">({item["authors"]})</span>：'
+            f'<span style="color: #333; text-decoration: none;">{item["summary"]}</span></li>'
         )
     list_html = "\n".join(list_items)
     return f"""
