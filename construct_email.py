@@ -50,6 +50,7 @@ To unsubscribe, remove your email in your Github Action setting.
 """
 
 SUMMARY_CHAR_LIMIT = 100
+SUMMARY_ANCHOR_ID = "super-summary"
 
 
 def _strip_html_tags(html_content: str) -> str:
@@ -86,6 +87,7 @@ def _build_summary_section(items: list[dict]) -> str:
         )
     list_html = "\n".join(list_items)
     return f"""
+<a id="{SUMMARY_ANCHOR_ID}" name="{SUMMARY_ANCHOR_ID}" style="display:block;height:1px;line-height:1px;"></a>
 <div style="border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #fff5e6; font-family: Arial, sans-serif; font-size: 14px; color: #333; line-height: 1.5;">
   <div style="font-size: 18px; font-weight: bold; margin-bottom: 8px;">今日超級速覽</div>
   <ul style="margin: 0; padding-left: 20px;">
@@ -109,16 +111,28 @@ def get_empty_html():
   """
   return block_template
 
-def get_block_html(title:str, authors:str, rate:str,arxiv_id:str, abstract:str, pdf_url:str, code_url:str=None, affiliations:str=None, block_id:str=None):
+def get_block_html(title:str, authors:str, rate:str,arxiv_id:str, abstract:str, pdf_url:str, code_url:str=None, affiliations:str=None, block_id:str=None, summary_anchor:str=None):
     code = f'<a href="{code_url}" style="display: inline-block; text-decoration: none; font-size: 14px; font-weight: bold; color: #fff; background-color: #5bc0de; padding: 8px 16px; border-radius: 4px; margin-left: 8px;">Code</a>' if code_url else ''
-    table_id_attr = f'id="{block_id}"' if block_id else ''
+    table_id_attr = f'id="{block_id}-section"' if block_id else ''
+    anchor_wrapper = f'<a id="{block_id}" name="{block_id}" style="display:block;height:1px;line-height:1px;"></a>' if block_id else ''
+    back_link_row = ""
+    if summary_anchor:
+        back_link_row = (
+            "<tr>"
+            f'<td style="font-size: 12px; padding: 4px 0 0 0;">'
+            f'<a href="#{summary_anchor}" style="color: #d9534f; text-decoration: none;">回到今日超級速覽 ↑</a>'
+            "</td>"
+            "</tr>"
+        )
     block_template = """
+    {anchor_wrapper}
     <table {table_id_attr} border="0" cellpadding="0" cellspacing="0" width="100%" style="font-family: Arial, sans-serif; border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f9f9f9;">
     <tr>
         <td style="font-size: 20px; font-weight: bold; color: #333;">
             {title}
         </td>
     </tr>
+    {back_link_row}
     <tr>
         <td style="font-size: 14px; color: #666; padding: 8px 0;">
             {authors}
@@ -150,7 +164,19 @@ def get_block_html(title:str, authors:str, rate:str,arxiv_id:str, abstract:str, 
     </tr>
 </table>
 """
-    return block_template.format(title=title, authors=authors,rate=rate,arxiv_id=arxiv_id, abstract=abstract, pdf_url=pdf_url, code=code, affiliations=affiliations, table_id_attr=table_id_attr)
+    return block_template.format(
+        title=title,
+        authors=authors,
+        rate=rate,
+        arxiv_id=arxiv_id,
+        abstract=abstract,
+        pdf_url=pdf_url,
+        code=code,
+        affiliations=affiliations,
+        table_id_attr=table_id_attr,
+        anchor_wrapper=anchor_wrapper,
+        back_link_row=back_link_row,
+    )
 
 def get_stars(score:float):
     full_star = '<span class="full-star">⭐</span>'
@@ -209,12 +235,26 @@ def render_email(papers:list[ArxivPaper]):
                 "anchor_id": anchor_id,
             }
         )
-        detail_parts.append(get_block_html(p.title, authors, rate, p.arxiv_id, body_html, p.pdf_url, p.code_url, affiliations, block_id=anchor_id))
+        detail_parts.append(
+            get_block_html(
+                p.title,
+                authors,
+                rate,
+                p.arxiv_id,
+                body_html,
+                p.pdf_url,
+                p.code_url,
+                affiliations,
+                block_id=anchor_id,
+                summary_anchor=SUMMARY_ANCHOR_ID,
+            )
+        )
         time.sleep(10)
 
     summary_section = _build_summary_section(summary_items)
     details_html = '<br>' + '</br><br>'.join(detail_parts) + '</br>'
-    content = summary_section + '<br><a id="detailed-section"></a>' + details_html
+    details_anchor = '<br><a id="detailed-section" name="detailed-section" style="display:block;height:1px;line-height:1px;"></a>'
+    content = summary_section + details_anchor + details_html
     return framework.replace('__CONTENT__', content)
 
 def send_email(sender:str, receiver:str, password:str,smtp_server:str,smtp_port:int, html:str,):
