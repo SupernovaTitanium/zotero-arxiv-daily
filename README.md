@@ -36,6 +36,7 @@
 - AI-generated TL;DR for you to quickly pick up target papers.
 - Affiliations of the paper are resolved and presented.
 - Links of PDF and code implementation (if any) presented in the e-mail.
+- In-mail jump links between 今日超級速覽 and each paper section for quick go-to/back navigation.
 - List of papers sorted by relevance with your recent research interest.
 - Fast deployment via fork this repo and set environment variables in the Github Action Page.
 - Support LLM API for generating TL;DR of papers.
