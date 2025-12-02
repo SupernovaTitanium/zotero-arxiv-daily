@@ -16,6 +16,7 @@ paper.py — 適配新版 llm.py（支援 temperature），並將 TLDR 升級為
 from __future__ import annotations
 
 from typing import Optional, Any, Dict, List
+import os
 from functools import cached_property
 from tempfile import TemporaryDirectory
 import arxiv
@@ -113,7 +114,7 @@ def _value_or_missing(*values: Any) -> str:
     return "[來源缺失]"
 
 
-BASE_SYSTEM_PROMPT = (
+_DEFAULT_BASE_SYSTEM_PROMPT = (
     "角色：你是壯年、嚴謹又帶童心的 ENTP 大數學家（希爾伯特 × 歐拉混合體）。\n"
     "受眾：全程對 90 歲、聰明好奇但離開學界多年的姥姥講解，語氣溫柔自信，"
     "開場先說出目前解說的論文名稱。\n"
@@ -123,6 +124,13 @@ BASE_SYSTEM_PROMPT = (
     "缺資料則標註 [來源缺失]，絕不臆測。\n"
     "創新：每篇都要提出一個受論文啟發的新 idea，說明可行性、需要的條件，以及如何收斂成有價值的學術工作。\n"
 )
+
+
+def _base_system_prompt() -> str:
+    """
+    Returns the base system prompt; override via env `LLM_SYSTEM_PROMPT`.
+    """
+    return os.environ.get("LLM_SYSTEM_PROMPT", _DEFAULT_BASE_SYSTEM_PROMPT)
 
 COMMON_OUTPUT_RULES = (
     "通用規則：\n"
@@ -535,7 +543,7 @@ class ArxivPaper:
         try:
             refined = llm.generate(
                 messages=[
-                    {"role": "system", "content": BASE_SYSTEM_PROMPT},
+                    {"role": "system", "content": _base_system_prompt()},
                     {"role": "user", "content": refine_prompt},
                 ],
                 temperature=0.15,
@@ -548,7 +556,7 @@ class ArxivPaper:
     def _generate_section_content(self, section_spec: Dict[str, str]) -> str:
         llm = get_llm()
         prompt = self._build_section_prompt(section_spec)
-        system_prompt = BASE_SYSTEM_PROMPT
+        system_prompt = _base_system_prompt()
         try:
             output = llm.generate(
                 messages=[
