@@ -18,6 +18,7 @@ This project recommends arXiv papers based on a Zotero library and emails a dail
 ## 4) LLM generation
 - `llm.py`: `set_global_llm` chooses OpenAI-compatible API when `USE_LLM_API=1` (needs `OPENAI_API_KEY/BASE/MODEL_NAME`), or local `llama_cpp` with `Qwen2.5-3B-Instruct-GGUF` when `USE_LLM_API=0`.
 - `paper.py`: builds structured prompts per section (`SECTION_SPECS` A–G + QA) with persona/system rules (`_base_system_prompt()`, `COMMON_OUTPUT_RULES`). Uses paper title/abstract/parsed LaTeX sections; Zotero corpus is not sent to the LLM. Each section is generated then refined. `tldr_markdown` is the combined digest; `teaser` is a ≤100-char Chinese intro. Affiliations are extracted via a separate prompt on the LaTeX author block. Override persona via env `LLM_SYSTEM_PROMPT` if you need a different tone/structure.
+- FULL_SUMMARY=0: skips generating structured digest/tldr in `paper.py` to avoid long-form LLM calls; teasers still use the LLM.
 
 ## 5) Email rendering and jump links
 - `construct_email.py`: renders summary (“今日超級速覽”) plus detailed blocks.

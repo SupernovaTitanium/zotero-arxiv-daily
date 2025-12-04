@@ -139,6 +139,11 @@ def _teaser_char_limit() -> int:
     except Exception:
         return 150
 
+
+def _full_summary_enabled() -> bool:
+    val = os.environ.get("FULL_SUMMARY", "0").strip().lower()
+    return val in {"1", "true", "yes", "on"}
+
 COMMON_OUTPUT_RULES = (
     "通用規則：\n"
     "- **極致精簡**：嚴格限制字數，能用短句就別用長句，能用詞語就別用句子。\n"
@@ -582,12 +587,16 @@ class ArxivPaper:
 
     @cached_property
     def digest_sections(self) -> Dict[str, str]:
+        if not _full_summary_enabled():
+            return {}
         sections: Dict[str, str] = {}
         for spec in SECTION_SPECS:
             sections[spec["key"]] = self._generate_section_content(spec)
         return sections
 
     def _generate_structured_digest_markdown(self) -> str:
+        if not _full_summary_enabled():
+            return "[Full summary disabled by FULL_SUMMARY=0]"
         blocks = []
         for spec in SECTION_SPECS:
             body = self.digest_sections.get(spec["key"], "[來源缺失]") or "[來源缺失]"
@@ -600,14 +609,24 @@ class ArxivPaper:
 
     @cached_property
     def tldr(self) -> str:
+        if not _full_summary_enabled():
+            return "[Full summary disabled by FULL_SUMMARY=0]"
         return self.digest_markdown
 
     @cached_property
     def tldr_markdown(self) -> str:
+        if not _full_summary_enabled():
+            return "[Full summary disabled by FULL_SUMMARY=0]"
         return self.digest_markdown
 
     @cached_property
     def tldr_json(self) -> dict:
+        if not _full_summary_enabled():
+            return {
+                "structured_digest_markdown": "[Full summary disabled by FULL_SUMMARY=0]",
+                "sections": {},
+                "teaser": self.teaser,
+            }
         return {
             "structured_digest_markdown": self.digest_markdown,
             "sections": self.digest_sections,
