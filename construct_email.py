@@ -61,6 +61,11 @@ def _summary_char_limit() -> int:
         return SUMMARY_CHAR_LIMIT_DEFAULT
 
 
+def _full_summary_enabled() -> bool:
+    val = os.environ.get("FULL_SUMMARY", "0").strip().lower()
+    return val in {"1", "true", "yes", "on"}
+
+
 def _strip_html_tags(html_content: str) -> str:
     if not html_content:
         return ""
@@ -80,7 +85,7 @@ def _anchor_from_arxiv_id(arxiv_id: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]", "-", base)
 
 
-def _build_summary_section(items: list[dict]) -> str:
+def _build_summary_section(items: list[dict], include_details: bool = True) -> str:
     """
     Renders the compact super summary list with jump links.
     """
@@ -92,9 +97,17 @@ def _build_summary_section(items: list[dict]) -> str:
         summary = item.get("summary") or ""
         if len(summary) > limit:
             summary = summary[:limit].rstrip() + "..."
+        if include_details:
+            link_html = (
+                f'<a href="#{item["anchor_id"]}" '
+                f'style="color: #d9534f; text-decoration: underline; font-weight: 700;">🔗 {item["title"]}</a>'
+            )
+        else:
+            link_html = (
+                f'<span style="color: #d9534f; font-weight: 700; text-decoration: underline;">🔗 {item["title"]}</span>'
+            )
         list_items.append(
-            f'<li style="margin-bottom: 8px;"><a href="#{item["anchor_id"]}" '
-            f'style="color: #d9534f; text-decoration: underline; font-weight: 700;">🔗 {item["title"]}</a> '
+            f'<li style="margin-bottom: 8px;">{link_html} '
             f'<span style="color: #666; font-size: 0.9em;">({item["authors"]})</span>：'
             f'<span style="color: #333; text-decoration: none;">{summary}</span></li>'
         )
@@ -211,6 +224,7 @@ def get_stars(score:float):
 def render_email(papers:list[ArxivPaper]):
     detail_parts = []
     summary_items = []
+    include_details = _full_summary_enabled()
     if len(papers) == 0 :
         return framework.replace('__CONTENT__', get_empty_html())
     
@@ -248,23 +262,28 @@ def render_email(papers:list[ArxivPaper]):
                 "anchor_id": anchor_id,
             }
         )
-        detail_parts.append(
-            get_block_html(
-                p.title,
-                authors,
-                rate,
-                p.arxiv_id,
-                body_html,
-                p.pdf_url,
-                p.code_url,
-                affiliations,
-                block_id=anchor_id,
-                summary_anchor=SUMMARY_ANCHOR_ID,
+        if include_details:
+            detail_parts.append(
+                get_block_html(
+                    p.title,
+                    authors,
+                    rate,
+                    p.arxiv_id,
+                    body_html,
+                    p.pdf_url,
+                    p.code_url,
+                    affiliations,
+                    block_id=anchor_id,
+                    summary_anchor=SUMMARY_ANCHOR_ID,
+                )
             )
-        )
-        time.sleep(10)
+            time.sleep(10)
 
-    summary_section = _build_summary_section(summary_items)
+    summary_section = _build_summary_section(summary_items, include_details=include_details)
+    if not include_details:
+        content = summary_section
+        return framework.replace('__CONTENT__', content)
+
     details_html = '<br>' + '</br><br>'.join(detail_parts) + '</br>'
     details_anchor = '<br><a id="detailed-section" name="detailed-section" style="display:block;height:1px;line-height:1px;"></a>'
     content = summary_section + details_anchor + details_html
