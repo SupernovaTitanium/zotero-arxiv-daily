@@ -11,6 +11,7 @@ from loguru import logger
 from markdown import markdown as md_to_html
 import html
 import re
+import os
 framework = """
 <!DOCTYPE HTML>
 <html>
@@ -49,8 +50,15 @@ To unsubscribe, remove your email in your Github Action setting.
 </html>
 """
 
-SUMMARY_CHAR_LIMIT = 100
+SUMMARY_CHAR_LIMIT_DEFAULT = 150
 SUMMARY_ANCHOR_ID = "super-summary"
+
+
+def _summary_char_limit() -> int:
+    try:
+        return max(1, int(os.environ.get("TEASER_CHAR_LIMIT", SUMMARY_CHAR_LIMIT_DEFAULT)))
+    except Exception:
+        return SUMMARY_CHAR_LIMIT_DEFAULT
 
 
 def _strip_html_tags(html_content: str) -> str:
@@ -79,12 +87,16 @@ def _build_summary_section(items: list[dict]) -> str:
     if not items:
         return ""
     list_items = []
+    limit = _summary_char_limit()
     for item in items:
+        summary = item.get("summary") or ""
+        if len(summary) > limit:
+            summary = summary[:limit].rstrip() + "..."
         list_items.append(
             f'<li style="margin-bottom: 8px;"><a href="#{item["anchor_id"]}" '
             f'style="color: #d9534f; text-decoration: underline; font-weight: 700;">🔗 {item["title"]}</a> '
             f'<span style="color: #666; font-size: 0.9em;">({item["authors"]})</span>：'
-            f'<span style="color: #333; text-decoration: none;">{item["summary"]}</span></li>'
+            f'<span style="color: #333; text-decoration: none;">{summary}</span></li>'
         )
     list_html = "\n".join(list_items)
     return f"""

@@ -132,6 +132,13 @@ def _base_system_prompt() -> str:
     """
     return os.environ.get("LLM_SYSTEM_PROMPT", _DEFAULT_BASE_SYSTEM_PROMPT)
 
+
+def _teaser_char_limit() -> int:
+    try:
+        return max(1, int(os.environ.get("TEASER_CHAR_LIMIT", "150")))
+    except Exception:
+        return 150
+
 COMMON_OUTPUT_RULES = (
     "通用規則：\n"
     "- **極致精簡**：嚴格限制字數，能用短句就別用長句，能用詞語就別用句子。\n"
@@ -616,11 +623,12 @@ class ArxivPaper:
         """
         llm = get_llm()
         inputs_block = self._compose_digest_input_block()
+        limit = _teaser_char_limit()
         prompt = (
             f"請為《{_value_or_missing(self.title)}》寫一段極短的中文介紹（Teaser）。\n"
             "目標：快速解釋「這篇論文解決什麼問題」以及「它的核心新意是什麼」，讓讀者決定是否繼續閱讀。\n"
             "限制：\n"
-            "1. **嚴格限制在 100 個中文字以內**。\n"
+            f"1. **嚴格限制在 {limit} 個中文字以內**。\n"
             "2. 直接講重點，不要有「這篇論文...」之類的開頭廢話。\n"
             "3. 使用繁體中文。\n\n"
             f"【可用資訊】\n{inputs_block}\n"
@@ -633,7 +641,10 @@ class ArxivPaper:
                 ],
                 temperature=0.2,
             )
-            return output.strip()
+            teaser = (output or "").strip()
+            if len(teaser) > limit:
+                teaser = teaser[:limit].rstrip()
+            return teaser
         except Exception as exc:
             logger.error(f"Failed to generate teaser for {self.arxiv_id}: {exc}")
             return "無法生成摘要"

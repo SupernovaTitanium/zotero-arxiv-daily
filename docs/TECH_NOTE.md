@@ -24,6 +24,7 @@ This project recommends arXiv papers based on a Zotero library and emails a dail
   - Anchors: summary anchor `super-summary`; per-paper anchor from `_anchor_from_arxiv_id` (e.g., `paper-<arxiv_id>`). Summary links are visibly styled (`🔗 title`) and point to `#anchor`.
   - Detail blocks add hidden anchors and a back-link “回到今日超級速覽 ↑” to `#super-summary`. “Detailed” anchor `detailed-section` separates summary from details.
   - Content: TL;DR Markdown → HTML, PDF/code buttons, authors/affiliations, arXiv ID, star rating from score.
+- Summary length: teaser limit is configurable via env `TEASER_CHAR_LIMIT` (default 150); longer outputs are truncated before rendering.
 - `send_email`: builds HTML MIME and sends via SMTP (TLS then SSL fallback).
 
 ## 6) Outputs
