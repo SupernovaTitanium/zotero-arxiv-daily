@@ -103,9 +103,16 @@ def _build_summary_section(items: list[dict], include_details: bool = True) -> s
                 f'style="color: #d9534f; text-decoration: underline; font-weight: 700;">🔗 {item["title"]}</a>'
             )
         else:
-            link_html = (
-                f'<span style="color: #d9534f; font-weight: 700; text-decoration: underline;">🔗 {item["title"]}</span>'
-            )
+            url = item.get("url") or ""
+            if url:
+                link_html = (
+                    f'<a href="{url}" target="_blank" '
+                    f'style="color: #d9534f; text-decoration: underline; font-weight: 700;">🔗 {item["title"]}</a>'
+                )
+            else:
+                link_html = (
+                    f'<span style="color: #d9534f; font-weight: 700; text-decoration: underline;">🔗 {item["title"]}</span>'
+                )
         list_items.append(
             f'<li style="margin-bottom: 8px;">{link_html} '
             f'<span style="color: #666; font-size: 0.9em;">({item["authors"]})</span>：'
@@ -260,6 +267,7 @@ def render_email(papers:list[ArxivPaper]):
                 "authors": ', '.join(author_list),
                 "summary": p.teaser,
                 "anchor_id": anchor_id,
+                "url": p.pdf_url or f"https://arxiv.org/abs/{p.arxiv_id}",
             }
         )
         if include_details:
