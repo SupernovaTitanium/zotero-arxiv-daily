@@ -19,6 +19,7 @@ This project recommends arXiv papers based on a Zotero library and emails a dail
 - `llm.py`: `set_global_llm` chooses OpenAI-compatible API when `USE_LLM_API=1` (needs `OPENAI_API_KEY/BASE/MODEL_NAME`), or local `llama_cpp` with `Qwen2.5-3B-Instruct-GGUF` when `USE_LLM_API=0`.
 - `paper.py`: builds structured prompts per section (`SECTION_SPECS` A–G + QA) with persona/system rules (`_base_system_prompt()`, `COMMON_OUTPUT_RULES`). Uses paper title/abstract/parsed LaTeX sections; Zotero corpus is not sent to the LLM. Each section is generated then refined. `tldr_markdown` is the combined digest; `teaser` is a Chinese intro capped by `TEASER_CHAR_LIMIT` (default 150). Affiliations are extracted via a separate prompt on the LaTeX author block. Override persona via env `LLM_SYSTEM_PROMPT` if you need a different tone/structure.
 - FULL_SUMMARY=0: skips generating structured digest/tldr in `paper.py` to avoid long-form LLM calls; teasers still use the LLM.
+- FULL_SUMMARY=-1: same email layout as 0, but teaser is generated only from the paper abstract (Chinese), and no other LLM calls are made.
 
 ## 5) Email rendering and jump links
 - `construct_email.py`: renders summary (“今日超級速覽”) plus detailed blocks.
@@ -26,7 +27,7 @@ This project recommends arXiv papers based on a Zotero library and emails a dail
   - Detail blocks add hidden anchors and a back-link “回到今日超級速覽 ↑” to `#super-summary`. “Detailed” anchor `detailed-section` separates summary from details.
   - Content: TL;DR Markdown → HTML, PDF/code buttons, authors/affiliations, arXiv ID, star rating from score.
 - Summary length: teaser limit is configurable via env `TEASER_CHAR_LIMIT` (default 150); longer outputs are truncated before rendering.
-- Detail rendering toggle: set env `FULL_SUMMARY=1` to include detailed sections; `0` (default) sends only the quick overview.
+- Detail rendering toggle: set env `FULL_SUMMARY=1` to include detailed sections; `0` (default) sends only the quick overview; `-1` sends abstract-only Chinese teasers.
 - `send_email`: builds HTML MIME and sends via SMTP (TLS then SSL fallback).
 
 ## 6) Outputs
