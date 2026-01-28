@@ -3,7 +3,7 @@
 This project recommends arXiv papers based on a Zotero library and emails a daily digest with jump links. Components and flow:
 
 ## 1) Execution and orchestration
-- GitHub Actions (`.github/workflows/main.yml`) runs nightly (`0 22 * * *`) or manually. It checks out code, installs via `uv`, and executes `uv run main.py` with secrets/vars for Zotero, arXiv query, SMTP, LLM, and language.
+- GitHub Actions (`.github/workflows/main.yml`) runs nightly (`0 22 * * *`) or manually. It checks out code, installs via `uv`, and executes `uv run main.py` with secrets/vars for Zotero, arXiv query, SMTP, LLM, language, and `FULL_SUMMARY`.
 - Local run: set env vars (or CLI flags) and `uv run main.py --debug --max_paper_num 3` for a small test.
 
 ## 2) Inputs
