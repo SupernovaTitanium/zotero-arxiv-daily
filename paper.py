@@ -140,9 +140,23 @@ def _teaser_char_limit() -> int:
         return 150
 
 
+def _summary_mode() -> str:
+    """
+    FULL_SUMMARY:
+      - "1"/true/on -> full sections
+      - "-1" -> abstract-only teaser (no other LLM calls)
+      - others -> teaser only
+    """
+    raw = os.environ.get("FULL_SUMMARY", "0").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return "full"
+    if raw in {"-1"}:
+        return "abstract"
+    return "teaser"
+
+
 def _full_summary_enabled() -> bool:
-    val = os.environ.get("FULL_SUMMARY", "0").strip().lower()
-    return val in {"1", "true", "yes", "on"}
+    return _summary_mode() == "full"
 
 COMMON_OUTPUT_RULES = (
     "通用規則：\n"
@@ -596,7 +610,7 @@ class ArxivPaper:
 
     def _generate_structured_digest_markdown(self) -> str:
         if not _full_summary_enabled():
-            return "[Full summary disabled by FULL_SUMMARY=0]"
+            return "[Full summary disabled (FULL_SUMMARY != 1)]"
         blocks = []
         for spec in SECTION_SPECS:
             body = self.digest_sections.get(spec["key"], "[來源缺失]") or "[來源缺失]"
@@ -610,20 +624,20 @@ class ArxivPaper:
     @cached_property
     def tldr(self) -> str:
         if not _full_summary_enabled():
-            return "[Full summary disabled by FULL_SUMMARY=0]"
+            return "[Full summary disabled (FULL_SUMMARY != 1)]"
         return self.digest_markdown
 
     @cached_property
     def tldr_markdown(self) -> str:
         if not _full_summary_enabled():
-            return "[Full summary disabled by FULL_SUMMARY=0]"
+            return "[Full summary disabled (FULL_SUMMARY != 1)]"
         return self.digest_markdown
 
     @cached_property
     def tldr_json(self) -> dict:
         if not _full_summary_enabled():
             return {
-                "structured_digest_markdown": "[Full summary disabled by FULL_SUMMARY=0]",
+                "structured_digest_markdown": "[Full summary disabled (FULL_SUMMARY != 1)]",
                 "sections": {},
                 "teaser": self.teaser,
             }
@@ -636,10 +650,45 @@ class ArxivPaper:
     # ---------------- Teaser 生成 ----------------
 
     @cached_property
+    def abstract_teaser(self) -> str:
+        """
+        只根據 abstract 生成極短中文摘要（FULL_SUMMARY=-1）。
+        """
+        abstract = (self.summary or "").strip()
+        if not abstract:
+            return "無摘要"
+        llm = get_llm()
+        limit = _teaser_char_limit()
+        prompt = (
+            "請只根據以下論文摘要，用繁體中文寫一段極短總結。\n"
+            f"限制：**嚴格限制在 {limit} 個中文字以內**。\n"
+            "不可加入摘要以外的資訊，不要提及作者、機構、標題或年份。\n"
+            "只輸出總結文字。\n\n"
+            f"摘要：\n{abstract}\n"
+        )
+        try:
+            output = llm.generate(
+                messages=[
+                    {"role": "system", "content": "你是一個精簡的學術摘要專家。"},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+            )
+            teaser = (output or "").strip()
+            if len(teaser) > limit:
+                teaser = teaser[:limit].rstrip()
+            return teaser
+        except Exception as exc:
+            logger.error(f"Failed to generate abstract teaser for {self.arxiv_id}: {exc}")
+            return "無法生成摘要"
+
+    @cached_property
     def teaser(self) -> str:
         """
         生成 100 字以內的中文 Teaser，包含問題與新意。
         """
+        if _summary_mode() == "abstract":
+            return self.abstract_teaser
         llm = get_llm()
         inputs_block = self._compose_digest_input_block()
         limit = _teaser_char_limit()
@@ -676,6 +725,8 @@ class ArxivPaper:
         盡量從 LaTeX 作者區段抽取作者單位（回傳去重後的頂層單位）。
         與原專案相容：若無法抽取，回傳 None。
         """
+        if _summary_mode() == "abstract":
+            return None
         if self.tex is not None:
             content = self.tex.get("all")
             if content is None:

@@ -82,7 +82,7 @@ There are also some public variables (Repository Variables) you can set, which a
 | REF | | str | The specified ref of the workflow to run. Only valid when REPOSITORY is set to `TideDra/zotero-arxiv-daily`. Currently supported values include `main` for stable version, `dev` for development version which has new features and potential bugs. | `main` |
 | LANGUAGE | | str | The language of TLDR; Its value is directly embeded in the prompt passed to LLM | Chinese |
 | TEASER_CHAR_LIMIT | | int | Max characters for the quick overview teaser; longer text is truncated. | 150 |
-| FULL_SUMMARY | | bool | Set to `1` to include detailed sections; `0` (default) sends only the quick overview and skips long-form LLM generation. | 0 |
+| FULL_SUMMARY | | int | Set to `1` to include detailed sections; `0` (default) sends only the quick overview; `-1` sends an abstract-only Chinese summary and skips other LLM calls. (Read from GitHub Actions repo variables.) | 0 |
 
 That's all! Now you can test the workflow by manually triggering it:
 ![test](./assets/test.png)

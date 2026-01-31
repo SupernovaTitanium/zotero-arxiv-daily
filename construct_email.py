@@ -61,9 +61,23 @@ def _summary_char_limit() -> int:
         return SUMMARY_CHAR_LIMIT_DEFAULT
 
 
+def _summary_mode() -> str:
+    """
+    FULL_SUMMARY:
+      - "1"/true/on -> full sections
+      - "-1" -> abstract-only teaser
+      - others -> teaser only
+    """
+    raw = os.environ.get("FULL_SUMMARY", "0").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return "full"
+    if raw in {"-1"}:
+        return "abstract"
+    return "teaser"
+
+
 def _full_summary_enabled() -> bool:
-    val = os.environ.get("FULL_SUMMARY", "0").strip().lower()
-    return val in {"1", "true", "yes", "on"}
+    return _summary_mode() == "full"
 
 
 def _strip_html_tags(html_content: str) -> str:
@@ -231,7 +245,8 @@ def get_stars(score:float):
 def render_email(papers:list[ArxivPaper]):
     detail_parts = []
     summary_items = []
-    include_details = _full_summary_enabled()
+    summary_mode = _summary_mode()
+    include_details = summary_mode == "full"
     if len(papers) == 0 :
         return framework.replace('__CONTENT__', get_empty_html())
     
@@ -244,33 +259,37 @@ def render_email(papers:list[ArxivPaper]):
             authors = ', '.join(author_list)
         else:
             authors = ', '.join(author_list[:3] + ['...'] + author_list[-2:])
-        if p.affiliations is not None:
-            affiliations = p.affiliations[:5]
-            affiliations = ', '.join(affiliations)
-            if len(p.affiliations) > 5:
-                affiliations += ', ...'
-        else:
-            affiliations = 'Unknown Affiliation'
-
-        # 對所有 digest 內容統一做 Markdown→HTML，確保表格/程式碼等語法能在信件中正確渲染
-        body_md = getattr(p, "tldr_markdown", None) or getattr(p, "tldr", "")
-        body_html = md_to_html(
-            body_md,
-            extensions=["extra", "tables", "fenced_code", "sane_lists"],
-            output_format="html5",
-        )
 
         anchor_id = _anchor_from_arxiv_id(p.arxiv_id)
+        if summary_mode == "abstract":
+            summary_text = p.abstract_teaser
+        else:
+            summary_text = p.teaser
         summary_items.append(
             {
                 "title": p.title,
                 "authors": ', '.join(author_list),
-                "summary": p.teaser,
+                "summary": summary_text,
                 "anchor_id": anchor_id,
                 "url": p.pdf_url or f"https://arxiv.org/abs/{p.arxiv_id}",
             }
         )
         if include_details:
+            if p.affiliations is not None:
+                affiliations = p.affiliations[:5]
+                affiliations = ', '.join(affiliations)
+                if len(p.affiliations) > 5:
+                    affiliations += ', ...'
+            else:
+                affiliations = 'Unknown Affiliation'
+
+            # 對所有 digest 內容統一做 Markdown→HTML，確保表格/程式碼等語法能在信件中正確渲染
+            body_md = getattr(p, "tldr_markdown", None) or getattr(p, "tldr", "")
+            body_html = md_to_html(
+                body_md,
+                extensions=["extra", "tables", "fenced_code", "sane_lists"],
+                output_format="html5",
+            )
             detail_parts.append(
                 get_block_html(
                     p.title,

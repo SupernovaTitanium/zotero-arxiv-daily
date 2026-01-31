@@ -35,6 +35,7 @@ jobs:
           OPENAI_API_BASE: ${{ secrets.TEST_OPENAI_API_BASE }}
           MODEL_NAME: ${{ secrets.TEST_MODEL_NAME }}
           LANGUAGE: ${{ secrets.TEST_LANGUAGE }}
+          FULL_SUMMARY: ${{ vars.FULL_SUMMARY }}
         run: |
           set -euo pipefail
           uv run main.py --debug
