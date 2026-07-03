@@ -16,6 +16,10 @@ llm:
     base_url: ${oc.env:OPENAI_API_BASE}
   generation_kwargs:
     model: gpt-4o-mini
+  summary:
+    mode: teaser
+    teaser_char_limit: 150
+    system_prompt: null
 
 source:
   arxiv:

@@ -6,6 +6,11 @@ import tiktoken
 from openai import OpenAI
 from loguru import logger
 import json
+from .personal_summary import (
+    generate_deep_digest,
+    generate_teaser,
+    get_summary_mode,
+)
 RawPaperItem = TypeVar('RawPaperItem')
 
 @dataclass
@@ -18,6 +23,8 @@ class Paper:
     pdf_url: Optional[str] = None
     full_text: Optional[str] = None
     tldr: Optional[str] = None
+    teaser: Optional[str] = None
+    tldr_markdown: Optional[str] = None
     affiliations: Optional[list[str]] = None
     score: Optional[float] = None
 
@@ -58,7 +65,23 @@ class Paper:
     
     def generate_tldr(self, openai_client:OpenAI,llm_params:dict) -> str:
         try:
-            tldr = self._generate_tldr_with_llm(openai_client,llm_params)
+            mode = get_summary_mode(llm_params)
+            if mode == "full":
+                self.teaser = generate_teaser(openai_client, llm_params, self.title, self.abstract, self.full_text)
+                tldr = generate_deep_digest(openai_client, llm_params, self.title, self.abstract, self.full_text)
+                self.tldr_markdown = tldr
+            elif mode in {"teaser", "abstract"}:
+                tldr = generate_teaser(
+                    openai_client,
+                    llm_params,
+                    self.title,
+                    self.abstract,
+                    self.full_text,
+                    abstract_only=mode == "abstract",
+                )
+                self.teaser = tldr
+            else:
+                tldr = self._generate_tldr_with_llm(openai_client,llm_params)
             self.tldr = tldr
             return tldr
         except Exception as e:

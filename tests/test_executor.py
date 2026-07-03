@@ -180,6 +180,10 @@ def test_run_end_to_end(config, monkeypatch):
         make_sample_paper(title="E2E Paper 1", score=None),
         make_sample_paper(title="E2E Paper 2", score=None),
     ]
+    monkeypatch.setattr(
+        "zotero_arxiv_daily.protocol.Paper.generate_affiliations",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("teaser mode should skip affiliations")),
+    )
 
     # Import to register the arxiv retriever
     import zotero_arxiv_daily.retriever.arxiv_retriever  # noqa: F401
@@ -207,6 +211,48 @@ def test_run_end_to_end(config, monkeypatch):
     assert len(sent) == 1, "Email should have been sent"
     _, _, email_body = sent[0]
     assert "text/html" in email_body
+
+
+def test_run_full_mode_generates_affiliations(config, monkeypatch):
+    import smtplib
+
+    from omegaconf import open_dict
+
+    from tests.canned_responses import (
+        make_sample_paper,
+        make_stub_openai_client,
+        make_stub_smtp,
+        make_stub_zotero_client,
+    )
+
+    with open_dict(config):
+        config.executor.source = ["arxiv"]
+        config.executor.reranker = "api"
+        config.executor.send_empty = False
+        config.executor.max_paper_num = 1
+        config.llm.summary.mode = "full"
+
+    monkeypatch.setattr("zotero_arxiv_daily.executor.zotero.Zotero", lambda *a, **kw: make_stub_zotero_client())
+    stub_client = make_stub_openai_client()
+    monkeypatch.setattr("zotero_arxiv_daily.executor.OpenAI", lambda **kw: stub_client)
+    monkeypatch.setattr("zotero_arxiv_daily.reranker.api.OpenAI", lambda **kw: stub_client)
+
+    import zotero_arxiv_daily.retriever.arxiv_retriever  # noqa: F401
+
+    from zotero_arxiv_daily.retriever.base import registered_retrievers
+
+    monkeypatch.setattr(registered_retrievers["arxiv"], "retrieve_papers", lambda self: [make_sample_paper(score=None)])
+    calls = []
+    monkeypatch.setattr("zotero_arxiv_daily.protocol.Paper.generate_affiliations", lambda self, *a: calls.append(self.title))
+
+    sent = []
+    monkeypatch.setattr(smtplib, "SMTP", make_stub_smtp(sent))
+    monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
+
+    Executor(config).run()
+
+    assert calls == ["Sample Paper Title"]
+    assert len(sent) == 1
 
 
 def test_run_no_papers_send_empty_false(config, monkeypatch):

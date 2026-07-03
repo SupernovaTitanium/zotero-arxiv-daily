@@ -29,6 +29,10 @@ llm:
     max_tokens: 16384
     model: ???
   language: English # Preferred language for the TL;DR. Example: English
+  summary:
+    mode: teaser # One of: full, teaser, abstract.
+    teaser_char_limit: 150 # Max characters in the quick overview teaser.
+    system_prompt: null # Override the deep digest system prompt. null uses the built-in prompt.
 
 reranker:
   local:

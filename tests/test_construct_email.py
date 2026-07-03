@@ -47,6 +47,29 @@ def test_render_email_no_affiliations():
     assert "Unknown Affiliation" in html
 
 
+def test_render_email_teaser_mode_summary_only():
+    paper = make_sample_paper(teaser="Short overview", tldr="Detailed text", affiliations=["MIT"])
+    html = render_email([paper], {"mode": "teaser", "teaser_char_limit": 150})
+    assert "今日超級速覽" in html
+    assert "Short overview" in html
+    assert "Detailed text" not in html
+    assert "Unknown Affiliation" not in html
+
+
+def test_render_email_full_mode_summary_and_deep_digest():
+    paper = make_sample_paper(
+        teaser="Short overview",
+        tldr="Fallback detail",
+        tldr_markdown="**A. 總結敘事**\n- useful",
+        affiliations=["MIT"],
+    )
+    html = render_email([paper], {"mode": "full", "teaser_char_limit": 150})
+    assert "今日超級速覽" in html
+    assert "深度速覽" in html
+    assert "回到今日超級速覽" in html
+    assert "MIT" in html
+
+
 def test_get_stars_low_score():
     assert get_stars(5.0) == ""
     assert get_stars(6.0) == ""

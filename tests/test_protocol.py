@@ -55,6 +55,55 @@ def test_tldr_truncates_long_prompt(llm_params):
     assert result is not None
 
 
+def test_tldr_teaser_mode_sets_teaser(llm_params):
+    client = make_stub_openai_client()
+    paper = make_sample_paper()
+    params = {**llm_params, "summary": {"mode": "teaser", "teaser_char_limit": 20}}
+    result = paper.generate_tldr(client, params)
+    assert result == "Hello! How can I ass"
+    assert paper.teaser == result
+    assert paper.tldr == result
+
+
+def test_tldr_full_mode_sets_markdown_and_renamed_prompt(llm_params):
+    from types import SimpleNamespace
+
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="section"))])
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    paper = make_sample_paper()
+    params = {**llm_params, "summary": {"mode": "full", "teaser_char_limit": 20, "system_prompt": None}}
+    result = paper.generate_tldr(client, params)
+    prompt_dump = str([call["messages"] for call in calls])
+    assert paper.teaser == "section"
+    assert paper.tldr_markdown == result
+    assert "姥姥" not in prompt_dump
+    assert "奶奶" not in prompt_dump
+    assert "長輩讀者" in prompt_dump
+
+
+def test_tldr_abstract_mode_omits_full_text(llm_params):
+    from types import SimpleNamespace
+
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="abstract only"))])
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    paper = make_sample_paper(full_text="SHOULD NOT APPEAR")
+    params = {**llm_params, "summary": {"mode": "abstract", "teaser_char_limit": 150}}
+    result = paper.generate_tldr(client, params)
+    prompt_dump = str(calls[0]["messages"])
+    assert result == "abstract only"
+    assert "SHOULD NOT APPEAR" not in prompt_dump
+
+
 # ---------------------------------------------------------------------------
 # generate_affiliations
 # ---------------------------------------------------------------------------
