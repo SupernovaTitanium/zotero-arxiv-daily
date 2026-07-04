@@ -48,12 +48,20 @@ def test_render_email_no_affiliations():
 
 
 def test_render_email_teaser_mode_summary_only():
-    paper = make_sample_paper(teaser="Short overview", tldr="Detailed text", affiliations=["MIT"])
+    paper = make_sample_paper(
+        title="<b>Unsafe Title</b>",
+        teaser="<script>alert(1)</script>",
+        tldr="Detailed text",
+        affiliations=["MIT"],
+    )
     html = render_email([paper], {"mode": "teaser", "teaser_char_limit": 150})
     assert "今日超級速覽" in html
-    assert "Short overview" in html
+    assert "&lt;b&gt;Unsafe Title&lt;/b&gt;" in html
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+    assert "<script>alert(1)</script>" not in html
     assert "Detailed text" not in html
     assert "Unknown Affiliation" not in html
+    assert "<strong>Relevance:</strong>" not in html
 
 
 def test_render_email_full_mode_summary_and_deep_digest():
@@ -68,6 +76,7 @@ def test_render_email_full_mode_summary_and_deep_digest():
     assert "深度速覽" in html
     assert "回到今日超級速覽" in html
     assert "MIT" in html
+    assert "PDF" in html
 
 
 def test_get_stars_low_score():

@@ -58,7 +58,8 @@ def get_empty_html():
 def _summary_mode(summary_config) -> str:
     if summary_config is None:
         return "legacy"
-    return str(summary_config.get("mode", "teaser")).lower()
+    mode = str(summary_config.get("mode", "teaser")).lower()
+    return mode if mode in {"teaser", "full", "legacy"} else "legacy"
 
 
 def _teaser_char_limit(summary_config) -> int:
@@ -208,7 +209,7 @@ def render_email(papers:list[Paper], summary_config=None) -> str:
         return framework.replace('__CONTENT__', get_empty_html())
 
     mode = _summary_mode(summary_config)
-    include_summary = mode in {"full", "teaser", "abstract"}
+    include_summary = mode in {"full", "teaser"}
     include_details = mode in {"legacy", "full"}
 
     if include_summary:

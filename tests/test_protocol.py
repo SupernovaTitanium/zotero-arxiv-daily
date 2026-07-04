@@ -65,7 +65,7 @@ def test_tldr_teaser_mode_sets_teaser(llm_params):
     assert paper.tldr == result
 
 
-def test_tldr_full_mode_sets_markdown_and_renamed_prompt(llm_params):
+def test_tldr_full_mode_sets_markdown_with_single_deep_digest_call(llm_params):
     from types import SimpleNamespace
 
     calls = []
@@ -81,27 +81,21 @@ def test_tldr_full_mode_sets_markdown_and_renamed_prompt(llm_params):
     prompt_dump = str([call["messages"] for call in calls])
     assert paper.teaser == "section"
     assert paper.tldr_markdown == result
-    assert "姥姥" not in prompt_dump
-    assert "奶奶" not in prompt_dump
-    assert "長輩讀者" in prompt_dump
+    assert len(calls) == 2
+    assert "不要編造頁碼" in prompt_dump
+    assert "[摘要]" in prompt_dump
+    assert "## 新 idea" in prompt_dump
+    assert "離開學界" in prompt_dump
 
 
-def test_tldr_abstract_mode_omits_full_text(llm_params):
-    from types import SimpleNamespace
-
-    calls = []
-
-    def create(**kwargs):
-        calls.append(kwargs)
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="abstract only"))])
-
-    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
-    paper = make_sample_paper(full_text="SHOULD NOT APPEAR")
-    params = {**llm_params, "summary": {"mode": "abstract", "teaser_char_limit": 150}}
+def test_tldr_legacy_mode_uses_original_tldr_path(llm_params):
+    client = make_stub_openai_client()
+    paper = make_sample_paper()
+    params = {**llm_params, "summary": {"mode": "legacy"}}
     result = paper.generate_tldr(client, params)
-    prompt_dump = str(calls[0]["messages"])
-    assert result == "abstract only"
-    assert "SHOULD NOT APPEAR" not in prompt_dump
+    assert result == "Hello! How can I assist you today?"
+    assert paper.teaser is None
+    assert paper.tldr_markdown is None
 
 
 # ---------------------------------------------------------------------------

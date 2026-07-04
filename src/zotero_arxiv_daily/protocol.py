@@ -70,14 +70,13 @@ class Paper:
                 self.teaser = generate_teaser(openai_client, llm_params, self.title, self.abstract, self.full_text)
                 tldr = generate_deep_digest(openai_client, llm_params, self.title, self.abstract, self.full_text)
                 self.tldr_markdown = tldr
-            elif mode in {"teaser", "abstract"}:
+            elif mode == "teaser":
                 tldr = generate_teaser(
                     openai_client,
                     llm_params,
                     self.title,
                     self.abstract,
                     self.full_text,
-                    abstract_only=mode == "abstract",
                 )
                 self.teaser = tldr
             else:

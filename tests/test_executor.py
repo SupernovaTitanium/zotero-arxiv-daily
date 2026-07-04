@@ -213,7 +213,8 @@ def test_run_end_to_end(config, monkeypatch):
     assert "text/html" in email_body
 
 
-def test_run_full_mode_generates_affiliations(config, monkeypatch):
+@pytest.mark.parametrize("summary_mode", ["full", "legacy"])
+def test_run_detail_modes_generate_affiliations(config, monkeypatch, summary_mode):
     import smtplib
 
     from omegaconf import open_dict
@@ -230,7 +231,7 @@ def test_run_full_mode_generates_affiliations(config, monkeypatch):
         config.executor.reranker = "api"
         config.executor.send_empty = False
         config.executor.max_paper_num = 1
-        config.llm.summary.mode = "full"
+        config.llm.summary.mode = summary_mode
 
     monkeypatch.setattr("zotero_arxiv_daily.executor.zotero.Zotero", lambda *a, **kw: make_stub_zotero_client())
     stub_client = make_stub_openai_client()
