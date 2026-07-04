@@ -155,17 +155,35 @@ def send_email(config:DictConfig, html:str):
     today = datetime.datetime.now().strftime('%Y/%m/%d')
     msg['Subject'] = Header(f'Daily arXiv {today}', 'utf-8').encode()
 
-    try:
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-    except Exception as e:
-        logger.debug(f"Failed to use TLS. {e}\nTry to use SSL.")
-        try:
-            server = smtplib.SMTP_SSL(smtp_server, smtp_port)
-        except Exception as e:
-            logger.debug(f"Failed to use SSL. {e}\nTry to use plain text.")
-            server = smtplib.SMTP(smtp_server, smtp_port)
+    last_error = None
+    attempts = (
+        ("TLS", lambda: smtplib.SMTP(smtp_server, smtp_port), True),
+        ("SSL", lambda: smtplib.SMTP_SSL(smtp_server, smtp_port), False),
+        ("plain text", lambda: smtplib.SMTP(smtp_server, smtp_port), False),
+    )
 
-    server.login(sender, password)
-    server.sendmail(sender, [receiver], msg.as_string())
-    server.quit()
+    for label, make_server, use_starttls in attempts:
+        server = None
+        try:
+            server = make_server()
+            if use_starttls:
+                server.starttls()
+            server.login(sender, password)
+            server.sendmail(sender, [receiver], msg.as_string())
+            try:
+                server.quit()
+            except Exception as e:
+                logger.debug(f"Failed to close SMTP connection after sending. {e}")
+            return
+        except Exception as e:
+            last_error = e
+            logger.debug(f"Failed to send email with {label}. {e}")
+            if server is not None:
+                try:
+                    server.quit()
+                except Exception:
+                    close = getattr(server, "close", None)
+                    if close is not None:
+                        close()
+
+    raise RuntimeError("Failed to send email by TLS, SSL, or plain SMTP") from last_error

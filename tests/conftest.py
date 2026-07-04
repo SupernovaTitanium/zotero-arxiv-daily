@@ -36,6 +36,7 @@ def _base_config():
                 "llm.api.key=sk-fake",
                 "llm.api.base_url=http://localhost:30000/v1",
                 "llm.generation_kwargs.model=gpt-4o-mini",
+                "llm.requests_per_minute=0",
                 "reranker.api.key=sk-fake",
                 "reranker.api.base_url=http://localhost:30000/v1",
                 "reranker.api.model=text-embedding-3-large",

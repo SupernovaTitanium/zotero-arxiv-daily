@@ -154,6 +154,30 @@ def test_send_email_falls_back_to_ssl(config, monkeypatch):
     assert len(sent) == 1
 
 
+def test_send_email_falls_back_to_ssl_when_tls_login_disconnects(config, monkeypatch):
+    sent = []
+
+    StubOK = make_stub_smtp(sent)
+
+    class StubSMTP_TLS_Login_Fails:
+        def __init__(self, *a, **kw):
+            pass
+        def starttls(self):
+            pass
+        def login(self, u, p):
+            raise smtplib.SMTPServerDisconnected("Connection unexpectedly closed")
+        def quit(self):
+            pass
+
+    class StubSMTP_SSL(StubOK):
+        pass
+
+    monkeypatch.setattr(smtplib, "SMTP", StubSMTP_TLS_Login_Fails)
+    monkeypatch.setattr(smtplib, "SMTP_SSL", StubSMTP_SSL)
+    send_email(config, "<html>ssl after login failure</html>")
+    assert len(sent) == 1
+
+
 def test_send_email_falls_back_to_plain(config, monkeypatch):
     sent = []
     call_count = {"smtp": 0}

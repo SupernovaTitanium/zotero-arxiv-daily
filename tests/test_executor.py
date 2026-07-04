@@ -5,8 +5,36 @@ from datetime import datetime
 import pytest
 from omegaconf import OmegaConf
 
-from zotero_arxiv_daily.executor import Executor, normalize_path_patterns
+from zotero_arxiv_daily.executor import Executor, normalize_path_patterns, rate_limit_chat_client
 from zotero_arxiv_daily.protocol import CorpusPaper
+
+
+
+def test_rate_limit_chat_client_waits_between_chat_requests():
+    from types import SimpleNamespace
+
+    now = [0.0]
+    calls = []
+    sleeps = []
+
+    def monotonic():
+        return now[0]
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        now[0] += seconds
+
+    def create(**kwargs):
+        calls.append(now[0])
+        return "ok"
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    limited = rate_limit_chat_client(client, 10, sleep=sleep, monotonic=monotonic)
+
+    assert limited.chat.completions.create() == "ok"
+    assert limited.chat.completions.create() == "ok"
+    assert sleeps == [6.0]
+    assert calls == [0.0, 6.0]
 
 
 # ---------------------------------------------------------------------------

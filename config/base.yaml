@@ -29,6 +29,7 @@ llm:
     max_tokens: 16384
     model: ???
   language: English # Preferred language for the TL;DR. Example: English
+  requests_per_minute: 10 # Max chat-completion requests per minute. Use 0 to disable throttling. Example: 10
   summary:
     mode: teaser # One of: teaser, full, legacy.
     teaser_char_limit: 150 # Max characters in the quick overview teaser.

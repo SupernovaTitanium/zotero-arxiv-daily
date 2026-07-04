@@ -5,6 +5,7 @@ from .utils import glob_match
 from .retriever import get_retriever_cls
 from .protocol import CorpusPaper
 import random
+import time
 from datetime import datetime
 from .reranker import get_reranker_cls
 from .construct_email import render_email
@@ -13,6 +14,55 @@ from openai import OpenAI
 from tqdm import tqdm
 from .personal_summary import get_summary_mode
 
+
+
+class _RateLimitedCompletions:
+    def __init__(self, completions, min_interval: float, sleep=time.sleep, monotonic=time.monotonic):
+        self._completions = completions
+        self._min_interval = min_interval
+        self._sleep = sleep
+        self._monotonic = monotonic
+        self._last_started_at = None
+
+    def create(self, *args, **kwargs):
+        now = self._monotonic()
+        if self._last_started_at is not None:
+            wait = self._min_interval - (now - self._last_started_at)
+            if wait > 0:
+                self._sleep(wait)
+                now = self._monotonic()
+        self._last_started_at = now
+        return self._completions.create(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._completions, name)
+
+
+class _RateLimitedChat:
+    def __init__(self, chat, min_interval: float, sleep=time.sleep, monotonic=time.monotonic):
+        self._chat = chat
+        self.completions = _RateLimitedCompletions(chat.completions, min_interval, sleep, monotonic)
+
+    def __getattr__(self, name):
+        return getattr(self._chat, name)
+
+
+class _RateLimitedOpenAI:
+    def __init__(self, client, requests_per_minute: float, sleep=time.sleep, monotonic=time.monotonic):
+        self._client = client
+        self.chat = _RateLimitedChat(client.chat, 60.0 / requests_per_minute, sleep, monotonic)
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
+
+
+def rate_limit_chat_client(client, requests_per_minute: float | int | None, sleep=time.sleep, monotonic=time.monotonic):
+    if not requests_per_minute:
+        return client
+    requests_per_minute = float(requests_per_minute)
+    if requests_per_minute <= 0:
+        return client
+    return _RateLimitedOpenAI(client, requests_per_minute, sleep, monotonic)
 
 def normalize_path_patterns(patterns: list[str] | ListConfig | None, config_key: str) -> list[str] | None:
     if patterns is None:
@@ -39,7 +89,10 @@ class Executor:
             source: get_retriever_cls(source)(config) for source in config.executor.source
         }
         self.reranker = get_reranker_cls(config.executor.reranker)(config)
-        self.openai_client = OpenAI(api_key=config.llm.api.key, base_url=config.llm.api.base_url)
+        self.openai_client = rate_limit_chat_client(
+            OpenAI(api_key=config.llm.api.key, base_url=config.llm.api.base_url),
+            config.llm.get("requests_per_minute", 10),
+        )
     def fetch_zotero_corpus(self) -> list[CorpusPaper]:
         logger.info("Fetching zotero corpus")
         zot = zotero.Zotero(self.config.zotero.user_id, 'user', self.config.zotero.api_key)
