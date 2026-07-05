@@ -23,12 +23,17 @@ jobs:
           SENDER: ${{ secrets.SENDER }}
           RECEIVER: ${{ secrets.RECEIVER }}
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
+          SMTP_SERVER: ${{ vars.SMTP_SERVER }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+          EMAIL_SMTP_SERVER: ${{ vars.EMAIL_SMTP_SERVER }}
+          EMAIL_SMTP_PORT: ${{ vars.EMAIL_SMTP_PORT }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
           CUSTOM_CONFIG: ${{ vars.CUSTOM_CONFIG }}
         run: |
           export DEBUG=true
           printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
+          uv run python scripts/apply_config_env_overrides.py config/custom.yaml
           echo "Use custom config: "
           cat config/custom.yaml
           uv run python scripts/smoke_arxiv_teaser_email.py --max-papers 3
