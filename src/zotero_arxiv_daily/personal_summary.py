@@ -54,6 +54,17 @@ def chat(openai_client: OpenAI, llm_params: Any, system: str, prompt: str) -> st
         ],
         **llm_params.get("generation_kwargs", {}),
     )
+    if llm_params.get("generation_kwargs", {}).get("stream"):
+        chunks = []
+        for chunk in response:
+            if not getattr(chunk, "choices", None):
+                continue
+            if len(chunk.choices) == 0 or getattr(chunk.choices[0], "delta", None) is None:
+                continue
+            content = getattr(chunk.choices[0].delta, "content", None)
+            if content is not None:
+                chunks.append(content)
+        return "".join(chunks)
     return response.choices[0].message.content
 
 

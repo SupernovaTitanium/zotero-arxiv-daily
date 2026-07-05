@@ -19,6 +19,7 @@ from openai import OpenAI
 
 from zotero_arxiv_daily.construct_email import render_email
 from zotero_arxiv_daily.executor import rate_limit_chat_client
+from zotero_arxiv_daily.personal_summary import generate_teaser
 from zotero_arxiv_daily.protocol import Paper
 from zotero_arxiv_daily.utils import send_email
 
@@ -78,9 +79,11 @@ def run(max_papers: int) -> None:
     )
     for paper in papers:
         logger.info(f"Generating teaser: {paper.title}")
-        paper.generate_tldr(openai_client, config.llm)
-        if not paper.tldr:
+        teaser = generate_teaser(openai_client, config.llm, paper.title, paper.abstract, paper.full_text)
+        if not teaser:
             raise RuntimeError(f"Failed to generate teaser for {paper.url}")
+        paper.teaser = teaser
+        paper.tldr = teaser
 
     logger.info("Rendering and sending smoke-test email")
     email_content = render_email(papers, config.llm.summary)

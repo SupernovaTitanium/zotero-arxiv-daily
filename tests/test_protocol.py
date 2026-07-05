@@ -65,6 +65,29 @@ def test_tldr_teaser_mode_sets_teaser(llm_params):
     assert paper.tldr == result
 
 
+def test_tldr_teaser_mode_accepts_streaming_response(llm_params):
+    from types import SimpleNamespace
+
+    chunks = [
+        SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="streamed "))]),
+        SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="teaser"))]),
+    ]
+    client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=SimpleNamespace(create=lambda **kwargs: iter(chunks))
+        )
+    )
+    paper = make_sample_paper()
+    params = {
+        **llm_params,
+        "generation_kwargs": {"model": "z-ai/glm-5.2", "stream": True},
+        "summary": {"mode": "teaser", "teaser_char_limit": 50},
+    }
+    result = paper.generate_tldr(client, params)
+    assert result == "streamed teaser"
+    assert paper.teaser == result
+
+
 def test_tldr_full_mode_sets_markdown_with_single_deep_digest_call(llm_params):
     from types import SimpleNamespace
 
