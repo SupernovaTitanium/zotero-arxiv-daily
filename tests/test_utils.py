@@ -178,6 +178,38 @@ def test_send_email_falls_back_to_ssl_when_tls_login_disconnects(config, monkeyp
     assert len(sent) == 1
 
 
+def test_send_email_uses_ssl_first_for_port_465(config, monkeypatch):
+    from omegaconf import open_dict
+
+    sent = []
+    calls = []
+
+    with open_dict(config):
+        config.email.smtp_port = 465
+
+    class StubSMTP:
+        def __init__(self, *a, **kw):
+            calls.append("smtp")
+
+        def starttls(self):
+            calls.append("starttls")
+
+    StubSSL = make_stub_smtp(sent)
+
+    class StubSMTP_SSL(StubSSL):
+        def __init__(self, *a, **kw):
+            calls.append("ssl")
+            super().__init__(*a, **kw)
+
+    monkeypatch.setattr(smtplib, "SMTP", StubSMTP)
+    monkeypatch.setattr(smtplib, "SMTP_SSL", StubSMTP_SSL)
+
+    send_email(config, "<html>ssl first</html>")
+
+    assert calls == ["ssl"]
+    assert len(sent) == 1
+
+
 def test_send_email_falls_back_to_plain(config, monkeypatch):
     sent = []
     call_count = {"smtp": 0}

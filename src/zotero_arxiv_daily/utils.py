@@ -156,11 +156,18 @@ def send_email(config:DictConfig, html:str):
     msg['Subject'] = Header(f'Daily arXiv {today}', 'utf-8').encode()
 
     last_error = None
-    attempts = (
+    if int(smtp_port) == 465:
+        attempts = (
+            ("SSL", lambda: smtplib.SMTP_SSL(smtp_server, smtp_port), False),
+            ("TLS", lambda: smtplib.SMTP(smtp_server, smtp_port), True),
+            ("plain text", lambda: smtplib.SMTP(smtp_server, smtp_port), False),
+        )
+    else:
+        attempts = (
         ("TLS", lambda: smtplib.SMTP(smtp_server, smtp_port), True),
         ("SSL", lambda: smtplib.SMTP_SSL(smtp_server, smtp_port), False),
         ("plain text", lambda: smtplib.SMTP(smtp_server, smtp_port), False),
-    )
+        )
 
     for label, make_server, use_starttls in attempts:
         server = None
