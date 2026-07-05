@@ -6,6 +6,7 @@ import pytest
 from omegaconf import OmegaConf
 
 from zotero_arxiv_daily.executor import Executor, normalize_path_patterns, rate_limit_chat_client
+from zotero_arxiv_daily.rate_limit import rate_limit_openai_client
 from zotero_arxiv_daily.protocol import CorpusPaper
 
 
@@ -35,6 +36,86 @@ def test_rate_limit_chat_client_waits_between_chat_requests():
     assert limited.chat.completions.create() == "ok"
     assert sleeps == [6.0]
     assert calls == [0.0, 6.0]
+
+
+def test_rate_limit_chat_client_retries_and_slows_down_after_429():
+    from types import SimpleNamespace
+
+    class RateLimitError(Exception):
+        status_code = 429
+
+    now = [0.0]
+    calls = []
+    sleeps = []
+
+    def monotonic():
+        return now[0]
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        now[0] += seconds
+
+    def create(**kwargs):
+        calls.append(now[0])
+        if len(calls) == 1:
+            raise RateLimitError("too many requests")
+        return "ok"
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    limited = rate_limit_openai_client(
+        client,
+        60,
+        max_retries=2,
+        backoff_seconds=2,
+        max_interval_seconds=10,
+        sleep=sleep,
+        monotonic=monotonic,
+    )
+
+    assert limited.chat.completions.create() == "ok"
+    assert limited.chat.completions.create() == "ok"
+    assert sleeps == [2.0, 2.0]
+    assert calls == [0.0, 2.0, 4.0]
+
+
+def test_rate_limit_openai_client_retries_embeddings_with_retry_after():
+    from types import SimpleNamespace
+
+    class RateLimitError(Exception):
+        status_code = 429
+        response = SimpleNamespace(headers={"Retry-After": "7"})
+
+    now = [0.0]
+    calls = []
+    sleeps = []
+
+    def monotonic():
+        return now[0]
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        now[0] += seconds
+
+    def create(**kwargs):
+        calls.append(now[0])
+        if len(calls) == 1:
+            raise RateLimitError("too many requests")
+        return "ok"
+
+    client = SimpleNamespace(embeddings=SimpleNamespace(create=create))
+    limited = rate_limit_openai_client(
+        client,
+        None,
+        max_retries=1,
+        backoff_seconds=30,
+        max_interval_seconds=60,
+        sleep=sleep,
+        monotonic=monotonic,
+    )
+
+    assert limited.embeddings.create(input=["a"], model="embedding-model") == "ok"
+    assert sleeps == [7.0]
+    assert calls == [0.0, 7.0]
 
 
 # ---------------------------------------------------------------------------

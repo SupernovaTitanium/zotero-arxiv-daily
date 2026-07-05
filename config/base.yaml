@@ -29,7 +29,10 @@ llm:
     max_tokens: 16384
     model: ???
   language: English # Preferred language for the TL;DR. Example: English
-  requests_per_minute: 10 # Max chat-completion requests per minute. Use 0 to disable throttling. Example: 10
+  requests_per_minute: 10 # Max chat-completion requests per minute. Use 0 to disable proactive throttling. Example: 10
+  rate_limit_max_retries: 5 # Max retries after a 429/RateLimitError. Example: 5
+  rate_limit_backoff_seconds: 30 # Initial wait after a rate-limit response when Retry-After is absent. Example: 30
+  rate_limit_max_interval_seconds: 300 # Max wait and future minimum request interval after rate limits. Example: 300
   summary:
     mode: teaser # One of: teaser, full, legacy.
     teaser_char_limit: 150 # Max characters in the quick overview teaser.
@@ -47,6 +50,10 @@ reranker:
     base_url: null # API URL of your embedding model API. Example: https://api.openai.com/v1
     model: null # The model name of the embedding model. Example: text-embedding-3-large
     batch_size: null # The batch size for embedding API requests. Adjust to match your provider's limit. Example: 64
+    requests_per_minute: null # Optional max embedding requests per minute. null disables proactive throttling. Example: 60
+    rate_limit_max_retries: 5 # Max retries after a 429/RateLimitError. Example: 5
+    rate_limit_backoff_seconds: 30 # Initial wait after a rate-limit response when Retry-After is absent. Example: 30
+    rate_limit_max_interval_seconds: 300 # Max wait and future minimum request interval after rate limits. Example: 300
 
 executor:
   debug: false # Whether to use debug mode. Example: true
