@@ -232,55 +232,72 @@ SAMPLE_BIORXIV_API_RESPONSE = {
 
 
 # ---------------------------------------------------------------------------
-# chemRxiv canned API response (Cambridge Open Engage public API)
+# chemRxiv canned API response (Crossref REST API, prefix 10.26434)
 # ---------------------------------------------------------------------------
 
-def _chemrxiv_item(item_id, title, published, category, authors, abstract="An abstract."):
+def _chemrxiv_item(doi, title, created, authors, abstract="<jats:p>An abstract.</jats:p>"):
+    """Build a Crossref ``posted-content`` work record for a chemRxiv preprint.
+
+    ``authors`` is a list of (given, family) tuples. ``created`` is an ISO timestamp.
+    """
     return {
-        "item": {
-            "id": item_id,
-            "doi": f"10.26434/chemrxiv-2026-{item_id}",
-            "title": title,
-            "abstract": abstract,
-            "publishedDate": published,
-            "version": "1",
-            "authors": [
-                {"firstName": first, "lastName": last, "institutions": []}
-                for first, last in authors
-            ],
-            "categories": [{"id": f"cat-{category.lower()[:5]}", "name": category}],
-            "asset": {
-                "original": {
-                    "url": f"https://chemrxiv.org/engage/api-gateway/chemrxiv/assets/{item_id}/original/paper.pdf",
-                }
-            },
-        }
+        "DOI": doi,
+        "type": "posted-content",
+        "subtype": "preprint",
+        "publisher": "American Chemical Society (ACS)",
+        "prefix": "10.26434",
+        "title": [title],
+        "abstract": abstract,
+        "created": {"date-time": created, "timestamp": 0},
+        "posted": {"date-parts": [[int(p) for p in created[:10].split("-")]]},
+        "author": [
+            {"given": given, "family": family, "sequence": "first" if i == 0 else "additional",
+             "affiliation": [{"name": "Some University"}]}
+            for i, (given, family) in enumerate(authors)
+        ],
+        "link": [{"URL": f"https://chemrxiv.org/doi/pdf/{doi}", "content-type": "unspecified"}],
+        "resource": {"primary": {"URL": f"https://chemrxiv.org/doi/full/{doi}"}},
+        "URL": f"https://doi.org/{doi}",
     }
 
 
-SAMPLE_CHEMRXIV_API_RESPONSE = {
-    "totalCount": 3,
-    "itemHits": [
-        _chemrxiv_item(
-            "aaa111",
-            "A chemrxiv paper",
-            "2026-03-02T10:00:00.000Z",
-            "Theoretical and Computational Chemistry",
-            [("Jane", "Smith"), ("Alan", "Doe")],
-        ),
-        _chemrxiv_item(
-            "bbb222",
-            "Another chemrxiv paper",
-            "2026-03-02T08:00:00.000Z",
-            "Organic Chemistry",
-            [("Li", "Wang")],
-        ),
-        _chemrxiv_item(
-            "ccc333",
-            "Old chemrxiv paper",
-            "2026-02-20T08:00:00.000Z",
-            "Theoretical and Computational Chemistry",
-            [("Rip", "Old")],
-        ),
-    ],
-}
+def _chemrxiv_response(items, total=None):
+    return {
+        "status": "ok",
+        "message-type": "work-list",
+        "message": {
+            "total-results": len(items) if total is None else total,
+            "items": items,
+            "items-per-page": 100,
+            "query": {"start-index": 0},
+        },
+    }
+
+
+SAMPLE_CHEMRXIV_API_RESPONSE = _chemrxiv_response([
+    _chemrxiv_item(
+        "10.26434/chemrxiv.15007618/v1",
+        "A chemrxiv paper",
+        "2026-03-02T10:00:00Z",
+        [("Jane", "Smith"), ("Alan", "Doe")],
+        abstract="<jats:p>We study RuO<jats:sub>2</jats:sub> &amp; friends.</jats:p>",
+    ),
+    _chemrxiv_item(
+        "10.26434/chemrxiv.15007000/v2",
+        "A revised chemrxiv paper",
+        "2026-03-02T09:00:00Z",
+        [("Li", "Wang")],
+    ),
+    _chemrxiv_item(
+        "10.26434/chemrxiv.15007619/v1",
+        "Another chemrxiv paper",
+        "2026-03-02T08:00:00Z",
+        [("Rip", "Old")],
+    ),
+    _chemrxiv_item(
+        "10.26434/chemrxiv.15006000/v1",
+        "Old chemrxiv paper",
+        "2026-02-20T08:00:00Z",
+        [("Rip", "Old")],
+    ),
+])
