@@ -229,3 +229,58 @@ SAMPLE_BIORXIV_API_RESPONSE = {
         },
     ],
 }
+
+
+# ---------------------------------------------------------------------------
+# chemRxiv canned API response (Cambridge Open Engage public API)
+# ---------------------------------------------------------------------------
+
+def _chemrxiv_item(item_id, title, published, category, authors, abstract="An abstract."):
+    return {
+        "item": {
+            "id": item_id,
+            "doi": f"10.26434/chemrxiv-2026-{item_id}",
+            "title": title,
+            "abstract": abstract,
+            "publishedDate": published,
+            "version": "1",
+            "authors": [
+                {"firstName": first, "lastName": last, "institutions": []}
+                for first, last in authors
+            ],
+            "categories": [{"id": f"cat-{category.lower()[:5]}", "name": category}],
+            "asset": {
+                "original": {
+                    "url": f"https://chemrxiv.org/engage/api-gateway/chemrxiv/assets/{item_id}/original/paper.pdf",
+                }
+            },
+        }
+    }
+
+
+SAMPLE_CHEMRXIV_API_RESPONSE = {
+    "totalCount": 3,
+    "itemHits": [
+        _chemrxiv_item(
+            "aaa111",
+            "A chemrxiv paper",
+            "2026-03-02T10:00:00.000Z",
+            "Theoretical and Computational Chemistry",
+            [("Jane", "Smith"), ("Alan", "Doe")],
+        ),
+        _chemrxiv_item(
+            "bbb222",
+            "Another chemrxiv paper",
+            "2026-03-02T08:00:00.000Z",
+            "Organic Chemistry",
+            [("Li", "Wang")],
+        ),
+        _chemrxiv_item(
+            "ccc333",
+            "Old chemrxiv paper",
+            "2026-02-20T08:00:00.000Z",
+            "Theoretical and Computational Chemistry",
+            [("Rip", "Old")],
+        ),
+    ],
+}
