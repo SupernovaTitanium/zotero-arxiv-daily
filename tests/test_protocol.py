@@ -58,6 +58,33 @@ def test_tldr_truncates_long_prompt(llm_params):
     assert result is not None
 
 
+def test_response_mode_maps_max_tokens(llm_params):
+    from types import SimpleNamespace
+
+    received_kwargs = {}
+
+    def create_response(**kwargs):
+        received_kwargs.update(kwargs)
+        return SimpleNamespace(output_text="Summary")
+
+    client = SimpleNamespace(
+        responses=SimpleNamespace(create=create_response),
+    )
+    llm_params["api_mode"] = "response"
+    paper = make_sample_paper()
+
+    assert paper.generate_tldr(client, llm_params) == "Summary"
+    assert received_kwargs["max_output_tokens"] == 16384
+    assert "max_tokens" not in received_kwargs
+
+
+def test_invalid_api_mode_falls_back_to_abstract(llm_params):
+    llm_params["api_mode"] = "invalid"
+    paper = make_sample_paper()
+
+    assert paper.generate_tldr(make_stub_openai_client(), llm_params) == paper.abstract
+
+
 # ---------------------------------------------------------------------------
 # generate_affiliations
 # ---------------------------------------------------------------------------
