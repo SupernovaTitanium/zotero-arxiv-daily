@@ -39,6 +39,12 @@ def _stub_chat_create(**kwargs):
     return _make_chat_response(_TLDR_RESPONSE)
 
 
+def _stub_response_create(**kwargs):
+    request_str = str(kwargs.get("input", []))
+    content = _AFFILIATION_RESPONSE if _AFFILIATION_MARKER in request_str else _TLDR_RESPONSE
+    return SimpleNamespace(output_text=content)
+
+
 def _stub_embeddings_create(**kwargs):
     inputs = kwargs.get("input", [])
     n = len(inputs) if isinstance(inputs, list) else 1
@@ -52,13 +58,14 @@ def _stub_embeddings_create(**kwargs):
 def make_stub_openai_client():
     """Return a SimpleNamespace that quacks like openai.OpenAI().
 
-    chat.completions.create() and embeddings.create() behave identically
+    chat.completions.create(), responses.create(), and embeddings.create() behave identically
     to the Docker mock_openai server that CI previously relied on.
     """
     return SimpleNamespace(
         chat=SimpleNamespace(
             completions=SimpleNamespace(create=_stub_chat_create),
         ),
+        responses=SimpleNamespace(create=_stub_response_create),
         embeddings=SimpleNamespace(create=_stub_embeddings_create),
     )
 
