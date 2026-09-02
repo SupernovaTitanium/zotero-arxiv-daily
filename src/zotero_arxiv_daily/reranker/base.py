@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from omegaconf import DictConfig
 from ..protocol import Paper, CorpusPaper
-from ..embedding_cache import EmbeddingCache
+from ..embedding_cache import EmbeddingCache, text_key
 import numpy as np
 from typing import Type
 from loguru import logger
@@ -35,20 +35,26 @@ class BaseReranker(ABC):
         return cosine_similarity(self.embed(s1), self.embed(s2))
 
     def _embed_corpus(self, texts:list[str]) -> np.ndarray:
-        """Embed corpus texts, reusing cached vectors for unchanged abstracts."""
+        """Embed corpus texts, reusing cached vectors for unchanged abstracts.
+        Entries for papers no longer in the corpus are pruned on save."""
         cache = getattr(self, "embedding_cache", None)
         if cache is None or not texts:
             return np.asarray(self.embed(texts), dtype=np.float32)
+        stale = set(cache.vectors) - {text_key(t) for t in texts}
+        for key in stale:
+            del cache.vectors[key]
         vectors: list = [cache.get(t) for t in texts]
         missing = [i for i, v in enumerate(vectors) if v is None]
-        if missing:
-            new_vectors = np.asarray(self.embed([texts[i] for i in missing]), dtype=np.float32)
-            for i, vec in zip(missing, new_vectors):
-                cache.put(texts[i], vec)
-                vectors[i] = vec
+        if missing or stale:
+            if missing:
+                new_vectors = np.asarray(self.embed([texts[i] for i in missing]), dtype=np.float32)
+                for i, vec in zip(missing, new_vectors):
+                    cache.put(texts[i], vec)
+                    vectors[i] = vec
             cache.save()
         logger.info(
-            f"Corpus embeddings: {len(texts) - len(missing)} reused from cache, {len(missing)} newly embedded"
+            f"Corpus embeddings: {len(texts) - len(missing)} reused from cache, "
+            f"{len(missing)} newly embedded, {len(stale)} pruned"
         )
         return np.stack(vectors)
 

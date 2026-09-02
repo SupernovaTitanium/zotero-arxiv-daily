@@ -33,7 +33,6 @@ def _install_response(monkeypatch, pages: list[dict]):
 
 
 def test_biorxiv_retrieve_keeps_all_dates_in_range(config, mock_biorxiv_api, monkeypatch):
-    monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
     with open_dict(config.source):
         config.source.biorxiv = {"category": ["bioinformatics"]}
     retriever = BiorxivRetriever(config)
@@ -45,7 +44,6 @@ def test_biorxiv_retrieve_keeps_all_dates_in_range(config, mock_biorxiv_api, mon
 def test_biorxiv_empty_response(config, monkeypatch):
     empty = {"messages": [{"status": "ok"}], "collection": []}
     _install_response(monkeypatch, [empty])
-    monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
 
     with open_dict(config.source):
         config.source.biorxiv = {"category": ["bioinformatics"]}
@@ -55,7 +53,6 @@ def test_biorxiv_empty_response(config, monkeypatch):
 
 
 def test_biorxiv_requests_explicit_date_range(config, monkeypatch):
-    monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
     requested = _install_response(monkeypatch, [SAMPLE_BIORXIV_API_RESPONSE])
 
     with open_dict(config.source):
@@ -70,7 +67,6 @@ def test_biorxiv_requests_explicit_date_range(config, monkeypatch):
 
 
 def test_biorxiv_follows_pagination_cursor(config, monkeypatch):
-    monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
     def _item(i, category="bioinformatics"):
         return {
             "doi": f"10.1101/2026.03.01.{i:06d}",

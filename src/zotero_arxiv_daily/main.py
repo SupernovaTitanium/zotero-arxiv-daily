@@ -19,7 +19,7 @@ def main(config:DictConfig):
         level=log_level,
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
     )
-    
+
     for logger_name in logging.root.manager.loggerDict:
         if "zotero_arxiv_daily" in logger_name:
             continue
@@ -27,7 +27,7 @@ def main(config:DictConfig):
 
     if config.executor.debug:
         logger.info("Debug mode is enabled")
-    
+
     executor = Executor(config)
     executor.run()
 

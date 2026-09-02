@@ -19,6 +19,9 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v7.1.4
 
+      - name: Lint
+        run: uv run ruff check src tests scripts
+
       - name: Run Pytest
         run: |
           uv run pytest -m "" --cov=src/zotero_arxiv_daily --cov-report=term-missing

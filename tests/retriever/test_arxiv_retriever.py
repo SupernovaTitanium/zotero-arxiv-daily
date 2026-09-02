@@ -44,7 +44,6 @@ def _install_fake_client(monkeypatch, results, captured=None):
 
 
 def test_arxiv_retriever_uses_date_range_query_and_filters_cross_lists(config, monkeypatch):
-    monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
     captured: dict = {}
     results = [
         _fake_result("New Paper", "2609.00001v1", "cs.AI", doi="10.1234/abc"),
@@ -52,10 +51,6 @@ def test_arxiv_retriever_uses_date_range_query_and_filters_cross_lists(config, m
         _fake_result("Cross Paper", "2609.00002v1", "physics.bio-ph"),
     ]
     _install_fake_client(monkeypatch, results, captured)
-
-    monkeypatch.setattr(arxiv_retriever, "extract_text_from_html", lambda paper: None)
-    monkeypatch.setattr(arxiv_retriever, "extract_text_from_pdf", lambda paper: None)
-    monkeypatch.setattr(arxiv_retriever, "extract_text_from_tar", lambda paper: None)
 
     retriever = ArxivRetriever(config)
     papers = retriever.retrieve_papers()
@@ -65,19 +60,16 @@ def test_arxiv_retriever_uses_date_range_query_and_filters_cross_lists(config, m
     assert [p.title for p in papers] == ["New Paper"]
     assert papers[0].doi == "10.1234/abc"
     assert papers[0].source_id == "2609.00001"
+    # two-stage pipeline: retrieval is metadata-only
+    assert papers[0].full_text is None
 
 
 def test_arxiv_retriever_includes_cross_list_when_configured(config, monkeypatch):
-    monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
     results = [
         _fake_result("New Paper", "2609.00001v1", "cs.AI"),
         _fake_result("Cross Paper", "2609.00002v1", "physics.bio-ph"),
     ]
     _install_fake_client(monkeypatch, results)
-    monkeypatch.setattr(arxiv_retriever, "extract_text_from_html", lambda paper: None)
-    monkeypatch.setattr(arxiv_retriever, "extract_text_from_pdf", lambda paper: None)
-    monkeypatch.setattr(arxiv_retriever, "extract_text_from_tar", lambda paper: None)
-
     with open_dict(config.source.arxiv):
         config.source.arxiv.include_cross_list = True
     papers = ArxivRetriever(config).retrieve_papers()
@@ -85,7 +77,6 @@ def test_arxiv_retriever_includes_cross_list_when_configured(config, monkeypatch
 
 
 def test_arxiv_retriever_filters_seen_keys_before_conversion(config, monkeypatch):
-    monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
     results = [
         _fake_result("Already Seen Paper", "2609.00003v1", "cs.AI"),
         _fake_result("Fresh Paper", "2609.00004v1", "cs.AI"),
@@ -99,10 +90,6 @@ def test_arxiv_retriever_filters_seen_keys_before_conversion(config, monkeypatch
         return original_convert(self, raw_paper)
 
     monkeypatch.setattr(ArxivRetriever, "convert_to_paper", _tracking_convert)
-    monkeypatch.setattr(arxiv_retriever, "extract_text_from_html", lambda paper: None)
-    monkeypatch.setattr(arxiv_retriever, "extract_text_from_pdf", lambda paper: None)
-    monkeypatch.setattr(arxiv_retriever, "extract_text_from_tar", lambda paper: None)
-
     retriever = ArxivRetriever(config)
     papers = retriever.retrieve_papers(seen_keys={"sid:arxiv:2609.00003"})
 
@@ -141,3 +128,26 @@ def test_run_with_hard_timeout_returns_none_on_failure(monkeypatch):
     )
     assert result is None
     assert "boom" in warnings[0]
+
+
+def test_fetch_full_text_prefers_tar_then_html_then_pdf(config, monkeypatch):
+    retriever = ArxivRetriever.__new__(ArxivRetriever)
+    retriever.config = config
+    paper = _fake_result("New Paper", "2609.00001v1", "cs.AI")
+    paper = retriever.convert_to_paper(paper)
+
+    calls = []
+    monkeypatch.setattr(arxiv_retriever, "extract_text_from_tar", lambda p: calls.append("tar") or "tar text")
+    monkeypatch.setattr(arxiv_retriever, "extract_text_from_html", lambda p: calls.append("html") or "html text")
+    monkeypatch.setattr(arxiv_retriever, "extract_text_from_pdf", lambda p: calls.append("pdf") or "pdf text")
+
+    assert retriever.fetch_full_text(paper) == "tar text"
+    assert calls == ["tar"]
+
+    monkeypatch.setattr(arxiv_retriever, "extract_text_from_tar", lambda p: None)
+    assert retriever.fetch_full_text(paper) == "html text"
+    assert calls == ["tar", "html"]
+
+    monkeypatch.setattr(arxiv_retriever, "extract_text_from_html", lambda p: None)
+    assert retriever.fetch_full_text(paper) == "pdf text"
+    assert calls == ["tar", "html", "pdf"]

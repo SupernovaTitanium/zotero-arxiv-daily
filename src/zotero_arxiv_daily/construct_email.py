@@ -1,33 +1,12 @@
 from .protocol import Paper
 from .personal_summary import DEEP_DIGEST_TITLE, SUMMARY_ANCHOR_ID
 import html
-import math
 import re
 
 
 framework = """
 <!DOCTYPE HTML>
 <html>
-<head>
-  <style>
-    .star-wrapper {
-      font-size: 1.3em; /* 调整星星大小 */
-      line-height: 1; /* 确保垂直对齐 */
-      display: inline-flex;
-      align-items: center; /* 保持对齐 */
-    }
-    .half-star {
-      display: inline-block;
-      width: 0.5em; /* 半颗星的宽度 */
-      overflow: hidden;
-      white-space: nowrap;
-      vertical-align: middle;
-    }
-    .full-star {
-      vertical-align: middle;
-    }
-  </style>
-</head>
 <body>
 
 <div>
@@ -159,23 +138,6 @@ def get_block_html(title:str, authors:str, rate:str, tldr:str, pdf_url:str, affi
         pdf_url=pdf_url,
         affiliations=affiliations,
     )
-
-def get_stars(score:float):
-    full_star = '<span class="full-star">⭐</span>'
-    half_star = '<span class="half-star">⭐</span>'
-    low = 6
-    high = 8
-    if score <= low:
-        return ''
-    elif score >= high:
-        return full_star * 5
-    else:
-        interval = (high-low) / 10
-        star_num = math.ceil((score-low) / interval)
-        full_star_num = int(star_num/2)
-        half_star_num = star_num - full_star_num * 2
-        return '<div class="star-wrapper">'+full_star * full_star_num + half_star * half_star_num + '</div>'
-
 
 def _build_summary_section(papers: list[Paper], summary_config, include_details: bool) -> str:
     limit = _teaser_char_limit(summary_config)

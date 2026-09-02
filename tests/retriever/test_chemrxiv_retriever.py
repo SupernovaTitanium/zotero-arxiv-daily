@@ -61,7 +61,6 @@ def test_chemrxiv_is_registered():
 
 
 def test_chemrxiv_retrieve_filters_by_date_and_version(config, monkeypatch, fixed_now):
-    monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
     calls = _patch_pages(monkeypatch, [SAMPLE_CHEMRXIV_API_RESPONSE])
     retriever = _configure(config)
     papers = retriever.retrieve_papers()
@@ -75,7 +74,6 @@ def test_chemrxiv_retrieve_filters_by_date_and_version(config, monkeypatch, fixe
 
 
 def test_chemrxiv_include_new_versions(config, monkeypatch, fixed_now):
-    monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
     _patch_pages(monkeypatch, [SAMPLE_CHEMRXIV_API_RESPONSE])
     retriever = _configure(config, include_new_versions=True)
     papers = retriever.retrieve_papers()
@@ -114,7 +112,6 @@ def test_chemrxiv_stops_on_short_page(config, monkeypatch, fixed_now):
 
 
 def test_chemrxiv_empty_response(config, monkeypatch, fixed_now):
-    monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
     _patch_pages(monkeypatch, [_chemrxiv_response([])])
     retriever = _configure(config)
     assert retriever.retrieve_papers() == []

@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '0 22 * * *'
 
+# Never let a manual dispatch race the scheduled run: both write the same
+# state/cache files.
+concurrency:
+  group: daily-email
+  cancel-in-progress: false
+
 jobs:
   calculate-and-send:
     runs-on: ubuntu-latest
@@ -45,7 +51,9 @@ jobs:
           printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
           uv run python scripts/apply_config_env_overrides.py config/custom.yaml
           echo "Use custom config: "
-          cat config/custom.yaml
+          # Mask values of key/password/secret-like entries in case someone
+          # pasted real credentials into CUSTOM_CONFIG.
+          sed -E 's/^([[:space:]]*[^#]*?(key|password|secret|token)[^:]*):.*/\1: ***MASKED***/I' config/custom.yaml
           uv run src/zotero_arxiv_daily/main.py
 
       - name: Save recommendation state
@@ -57,3 +65,11 @@ jobs:
             state/corpus_embeddings.npz
             ~/.cache/huggingface
           key: recommended-${{ github.run_id }}
+
+      - name: Upload run outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-outputs-${{ github.run_id }}
+          path: output/
+          if-no-files-found: ignore

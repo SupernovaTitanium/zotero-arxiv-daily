@@ -47,6 +47,7 @@ def _base_config():
                 "executor.debug=false",
                 "executor.send_empty=false",
                 "executor.state_file=null",
+                "executor.output_dir=null",
             ],
         )
     return cfg

@@ -4,7 +4,6 @@ from ..protocol import Paper, RawPaperItem
 from ..utils import normalize_title
 from tqdm import tqdm
 from typing import Type
-from time import sleep
 from loguru import logger
 
 
@@ -13,6 +12,7 @@ class BaseRetriever(ABC):
     def __init__(self, config:DictConfig):
         self.config = config
         self.retriever_config = getattr(config.source,self.name)
+        self.last_skipped = 0
 
     @abstractmethod
     def _retrieve_raw_papers(self) -> list[RawPaperItem]:
@@ -21,6 +21,11 @@ class BaseRetriever(ABC):
     @abstractmethod
     def convert_to_paper(self, raw_paper:RawPaperItem) -> Paper | None:
         pass
+
+    def fetch_full_text(self, paper:Paper) -> str | None:
+        """Fetch the paper full text after ranking. Sources that cannot be
+        scraped keep the default (no full text)."""
+        return None
 
     def _raw_keys(self, raw_paper:RawPaperItem) -> list[str]:
         """Dedup keys of a raw paper. Filtering happens before convert_to_paper,
@@ -31,12 +36,18 @@ class BaseRetriever(ABC):
         return ["title:" + normalize_title(title)] if title else []
 
     def retrieve_papers(self, seen_keys:set[str]|None=None) -> list[Paper]:
+        """Convert raw papers to metadata-only Papers.
+
+        ``seen_keys`` is a *shared, mutable* set: keys of converted papers are
+        added to it, so a later source (or a later run stage) can dedup against
+        papers already converted in this same run.
+        """
         raw_papers = self._retrieve_raw_papers()
         logger.info("Processing papers...")
         papers = []
         skipped = 0
         for raw_paper in tqdm(raw_papers, total=len(raw_papers), desc="Converting papers"):
-            if seen_keys and set(self._raw_keys(raw_paper)) & seen_keys:
+            if seen_keys is not None and set(self._raw_keys(raw_paper)) & seen_keys:
                 skipped += 1
                 continue
             try:
@@ -46,9 +57,11 @@ class BaseRetriever(ABC):
                 continue
             if paper is not None:
                 papers.append(paper)
-            sleep(1)
+                if seen_keys is not None:
+                    seen_keys.update(paper.dedup_keys())
+        self.last_skipped = skipped
         if skipped:
-            logger.info(f"Skipped {skipped} papers already seen (recommended before or already in Zotero)")
+            logger.info(f"Skipped {skipped} papers already seen (recommended before, already in Zotero, or from another source)")
         return papers
 
 registered_retrievers = {}

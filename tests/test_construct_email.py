@@ -1,6 +1,6 @@
-"""Tests for zotero_arxiv_daily.construct_email: render_email, get_stars, get_block_html."""
+"""Tests for zotero_arxiv_daily.construct_email: render_email, get_block_html."""
 
-from zotero_arxiv_daily.construct_email import render_email, get_stars, get_block_html, get_empty_html
+from zotero_arxiv_daily.construct_email import render_email, get_block_html, get_empty_html
 from tests.canned_responses import make_sample_paper
 
 
@@ -77,22 +77,6 @@ def test_render_email_full_mode_summary_and_deep_digest():
     assert "回到今日超級速覽" in html
     assert "MIT" in html
     assert "PDF" in html
-
-
-def test_get_stars_low_score():
-    assert get_stars(5.0) == ""
-    assert get_stars(6.0) == ""
-
-
-def test_get_stars_high_score():
-    stars = get_stars(8.0)
-    assert stars.count("full-star") == 5
-
-
-def test_get_stars_mid_score():
-    stars = get_stars(7.0)
-    assert "star" in stars
-    assert stars.count("full-star") + stars.count("half-star") > 0
 
 
 def test_get_block_html_contains_all_fields():

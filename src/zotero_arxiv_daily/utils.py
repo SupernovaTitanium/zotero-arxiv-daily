@@ -2,14 +2,8 @@ import tarfile
 import re
 import glob
 import math
-import smtplib
 from collections import Counter
-from email.header import Header
-from email.mime.text import MIMEText
-from email.utils import parseaddr, formataddr
 from loguru import logger
-import datetime
-from omegaconf import DictConfig
 import pymupdf
 import pymupdf.layout
 pymupdf.TOOLS.mupdf_display_errors(False)
@@ -69,19 +63,19 @@ def _bm25_pick(query: str, candidates: dict[str, str], k1: float = 1.5, b: float
     return best_name
 
 
-def extract_tex_code_from_tar(file_path:str, paper_id:str, paper_title:str | None = None) -> dict[str,str]:
+def extract_tex_code_from_tar(file_path:str, paper_id:str, paper_title:str | None = None) -> dict[str,str] | None:
     try:
         tar = tarfile.open(file_path)
     except tarfile.ReadError:
         logger.debug(f"Failed to find main tex file of {paper_id}: Not a tar file.")
         return None
- 
+
     tex_files = [f for f in tar.getnames() if f.endswith('.tex')]
     if len(tex_files) == 0:
         logger.debug(f"Failed to find main tex file of {paper_id}: No tex file.")
         tar.close()
         return None
-    
+
     bbl_file = [f for f in tar.getnames() if f.endswith('.bbl')]
     match len(bbl_file) :
         case 0:
@@ -144,7 +138,7 @@ def extract_tex_code_from_tar(file_path:str, paper_id:str, paper_title:str | Non
     else:
         logger.debug(f"Failed to find main tex file of {paper_id}: No tex file containing the document block.")
         file_contents["all"] = None
-        
+
     tar.close()
     return file_contents
 
@@ -154,59 +148,3 @@ def extract_markdown_from_pdf(file_path:str) -> str:
 def glob_match(path:str, pattern:str) -> bool:
     re_pattern = glob.translate(pattern,recursive=True)
     return re.match(re_pattern, path) is not None
-
-def send_email(config:DictConfig, html:str):
-    sender = config.email.sender
-    receiver = config.email.receiver
-    password = config.email.sender_password
-    smtp_server = config.email.smtp_server
-    smtp_port = config.email.smtp_port
-    def _format_addr(s):
-        name, addr = parseaddr(s)
-        return formataddr((Header(name, 'utf-8').encode(), addr))
-
-    msg = MIMEText(html, 'html', 'utf-8')
-    msg['From'] = _format_addr('Github Action <%s>' % sender)
-    msg['To'] = _format_addr('You <%s>' % receiver)
-    today = datetime.datetime.now().strftime('%Y/%m/%d')
-    msg['Subject'] = Header(f'Daily arXiv {today}', 'utf-8').encode()
-
-    last_error = None
-    if int(smtp_port) == 465:
-        attempts = (
-            ("SSL", lambda: smtplib.SMTP_SSL(smtp_server, smtp_port), False),
-            ("TLS", lambda: smtplib.SMTP(smtp_server, smtp_port), True),
-            ("plain text", lambda: smtplib.SMTP(smtp_server, smtp_port), False),
-        )
-    else:
-        attempts = (
-        ("TLS", lambda: smtplib.SMTP(smtp_server, smtp_port), True),
-        ("SSL", lambda: smtplib.SMTP_SSL(smtp_server, smtp_port), False),
-        ("plain text", lambda: smtplib.SMTP(smtp_server, smtp_port), False),
-        )
-
-    for label, make_server, use_starttls in attempts:
-        server = None
-        try:
-            server = make_server()
-            if use_starttls:
-                server.starttls()
-            server.login(sender, password)
-            server.sendmail(sender, [receiver], msg.as_string())
-            try:
-                server.quit()
-            except Exception as e:
-                logger.debug(f"Failed to close SMTP connection after sending. {e}")
-            return
-        except Exception as e:
-            last_error = e
-            logger.debug(f"Failed to send email with {label}. {e}")
-            if server is not None:
-                try:
-                    server.quit()
-                except Exception:
-                    close = getattr(server, "close", None)
-                    if close is not None:
-                        close()
-
-    raise RuntimeError("Failed to send email by TLS, SSL, or plain SMTP") from last_error

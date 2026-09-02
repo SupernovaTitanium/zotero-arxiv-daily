@@ -18,9 +18,10 @@ source:
 email:
   sender: ??? # The email account of the SMTP server that sends you email. Example: abc@qq.com
   receiver: ??? # The email account that receives the paper list. Example: abc@outlook.com
-  smtp_server: ??? # The SMTP server that sends the email. Ask your email provider (Gmail, QQ, Outlook, ...) for its SMTP server. Example: smtp.qq.com
+  smtp_server: ??? # The SMTP server that sends the email. Ask your email provider (Gmail, QQ, Outlook, ...) for its SMTP server. Example: smtp.qq.com. In GitHub Actions this can also come from the SMTP_SERVER secret or EMAIL_SMTP_SERVER variable (the secret wins).
   smtp_port: ??? # The port of SMTP server. Example: 465
   sender_password: ??? # The password of the sender account. Note that it's not necessarily the password for logging in the e-mail client, but the authentication code for SMTP service. Ask your email provider for this. Example: abcdefghijklmn
+  subject_prefix: Daily Papers # Prefix of the email subject, followed by the date. Example: Daily Papers
 
 llm:
   api:
@@ -31,7 +32,7 @@ llm:
   # Arguments for the selected LLM API.
     max_tokens: 16384
     model: ???
-  language: English # Preferred language for the TL;DR. Example: English
+  language: English # Preferred language for TLDR/teaser output. Example: Traditional Chinese
   requests_per_minute: 10 # Max chat-completion requests per minute. Use 0 to disable proactive throttling. Example: 10
   rate_limit_max_retries: 5 # Max retries after a 429/RateLimitError. Example: 5
   rate_limit_backoff_seconds: 30 # Initial wait after a rate-limit response when Retry-After is absent. Example: 30
@@ -39,6 +40,7 @@ llm:
   summary:
     mode: teaser # One of: teaser, full, legacy.
     teaser_char_limit: 150 # Max characters in the quick overview teaser.
+    batch_size: 10 # Papers per teaser LLM request in teaser mode (cuts requests ~10x). 1 disables batching. Example: 10
     system_prompt: null # Override the deep digest system prompt. null uses the built-in prompt.
 
 reranker:
@@ -68,3 +70,6 @@ executor:
   lookback_days: 3 # How many days back to retrieve new papers, so a missed or failed run is caught up by the next run. Example: 3
   state_file: state/recommended.json # File storing papers already processed (never recommended twice). Persist it between runs (e.g. actions/cache). null disables. Example: state/recommended.json
   history_days: 30 # How many days of processed-paper history to keep in the state file. Example: 30
+  fulltext_paper_num: 30 # After ranking on abstracts, full text is fetched only for the top N papers (two-stage pipeline); the rest are summarized from the abstract. Example: 30
+  fulltext_workers: 4 # Parallel workers fetching full texts. Example: 4
+  output_dir: output # Directory for the rendered email and run summary (full ranking + stats), uploaded as a workflow artifact for debugging. null disables. Example: output

@@ -21,7 +21,7 @@ from zotero_arxiv_daily.construct_email import render_email
 from zotero_arxiv_daily.executor import rate_limit_chat_client
 from zotero_arxiv_daily.personal_summary import generate_teaser
 from zotero_arxiv_daily.protocol import Paper
-from zotero_arxiv_daily.utils import send_email
+from zotero_arxiv_daily.mailer import send_email
 
 
 def _load_config() -> DictConfig:

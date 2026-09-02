@@ -33,7 +33,6 @@ class ChemrxivRetriever(BaseRetriever):
     api_url = "https://api.crossref.org/prefixes/10.26434/works"
     page_size = 100
     max_pages = 20
-    lookback_hours = 24
     request_headers = {
         "User-Agent": "zotero-arxiv-daily (https://github.com/TideDra/zotero-arxiv-daily)",
         "Accept": "application/json",

@@ -4,7 +4,6 @@ from arxiv import Result as ArxivResult
 from ..protocol import Paper
 from ..utils import extract_markdown_from_pdf, extract_tex_code_from_tar, normalize_doi, normalize_title
 from tempfile import TemporaryDirectory
-from tqdm import tqdm
 import multiprocessing
 import os
 import re
@@ -171,30 +170,31 @@ class ArxivRetriever(BaseRetriever):
         return keys
 
     def convert_to_paper(self, raw_paper: ArxivResult) -> Paper:
-        title = raw_paper.title
-        authors = [a.name for a in raw_paper.authors]
-        abstract = raw_paper.summary
-        pdf_url = raw_paper.pdf_url
-        full_text = extract_text_from_tar(raw_paper)
-        if full_text is None:
-            full_text = extract_text_from_html(raw_paper)
-        if full_text is None:
-            full_text = extract_text_from_pdf(raw_paper)
+        # Metadata only: full text is fetched later, after ranking, for the
+        # papers that actually make it into the email.
         return Paper(
             source=self.name,
-            title=title,
-            authors=authors,
-            abstract=abstract,
+            title=raw_paper.title,
+            authors=[a.name for a in raw_paper.authors],
+            abstract=raw_paper.summary,
             url=raw_paper.entry_id,
-            pdf_url=pdf_url,
-            full_text=full_text,
+            pdf_url=raw_paper.pdf_url,
+            full_text=None,
             doi=raw_paper.doi,
             source_id=self._short_id(raw_paper.entry_id),
         )
 
+    def fetch_full_text(self, paper: Paper) -> str | None:
+        full_text = extract_text_from_tar(paper)
+        if full_text is None:
+            full_text = extract_text_from_html(paper)
+        if full_text is None:
+            full_text = extract_text_from_pdf(paper)
+        return full_text
 
-def extract_text_from_html(paper: ArxivResult) -> str | None:
-    html_url = paper.entry_id.replace("/abs/", "/html/")
+
+def extract_text_from_html(paper: Paper) -> str | None:
+    html_url = paper.url.replace("/abs/", "/html/")
     try:
         return _extract_text_from_html_worker(html_url)
     except Exception as exc:
@@ -202,7 +202,7 @@ def extract_text_from_html(paper: ArxivResult) -> str | None:
         return None
 
 
-def extract_text_from_pdf(paper: ArxivResult) -> str | None:
+def extract_text_from_pdf(paper: Paper) -> str | None:
     if paper.pdf_url is None:
         logger.warning(f"No PDF URL available for {paper.title}")
         return None
@@ -215,14 +215,14 @@ def extract_text_from_pdf(paper: ArxivResult) -> str | None:
     )
 
 
-def extract_text_from_tar(paper: ArxivResult) -> str | None:
-    source_url = paper.source_url()
-    if source_url is None:
-        logger.warning(f"No source URL available for {paper.title}")
+def extract_text_from_tar(paper: Paper) -> str | None:
+    if not paper.source_id:
+        logger.warning(f"No source id available for {paper.title}")
         return None
+    source_url = f"https://arxiv.org/e-print/{paper.source_id}"
     return _run_with_hard_timeout(
         _extract_text_from_tar_worker,
-        (source_url, paper.entry_id, paper.title),
+        (source_url, paper.url, paper.title),
         timeout=TAR_EXTRACT_TIMEOUT,
         operation="Tar extraction",
         paper_title=paper.title,

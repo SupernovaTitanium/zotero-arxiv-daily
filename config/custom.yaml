@@ -17,9 +17,11 @@ llm:
   api_mode: chat_completion
   generation_kwargs:
     model: gpt-4o-mini
+  language: Traditional Chinese # Output language for teasers/TLDRs
   summary:
     mode: teaser
     teaser_char_limit: 150
+    batch_size: 10
     system_prompt: null
 
 source:

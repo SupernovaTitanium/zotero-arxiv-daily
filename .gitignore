@@ -19,3 +19,6 @@ outputs
 config/private.yaml
 # Recommendation dedup state
 state/
+
+# Run outputs (email + run summary artifacts)
+output/
