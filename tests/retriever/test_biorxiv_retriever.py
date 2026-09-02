@@ -7,29 +7,44 @@ from zotero_arxiv_daily.retriever.biorxiv_retriever import BiorxivRetriever
 from tests.canned_responses import SAMPLE_BIORXIV_API_RESPONSE
 
 
-def test_biorxiv_retrieve(config, mock_biorxiv_api, monkeypatch):
+def _install_response(monkeypatch, pages: list[dict]):
+    """Patch requests.get to serve the given pages sequentially for biorxiv URLs.
+
+    Records every requested URL into ``pages['urls']`` if present.
+    """
+    import requests
+    from types import SimpleNamespace
+
+    original_get = requests.get
+    remaining = list(pages)
+    requested: list[str] = []
+
+    def _patched(url, **kw):
+        if "api.biorxiv.org" not in url:
+            return original_get(url, **kw)
+        requested.append(url)
+        page = remaining.pop(0) if remaining else {"messages": [{"status": "ok"}], "collection": []}
+        resp = SimpleNamespace(status_code=200, raise_for_status=lambda: None)
+        resp.json = lambda: page
+        return resp
+
+    monkeypatch.setattr(requests, "get", _patched)
+    return requested
+
+
+def test_biorxiv_retrieve_keeps_all_dates_in_range(config, mock_biorxiv_api, monkeypatch):
     monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
     with open_dict(config.source):
         config.source.biorxiv = {"category": ["bioinformatics"]}
     retriever = BiorxivRetriever(config)
     papers = retriever.retrieve_papers()
-    # Only latest date + matching category
-    assert len(papers) == 1
-    assert papers[0].title == "A biorxiv paper"
+    # Both dates in the window whose category matches (latest-date-only behavior is gone)
+    assert [p.title for p in papers] == ["A biorxiv paper", "Old biorxiv paper"]
 
 
 def test_biorxiv_empty_response(config, monkeypatch):
-    import requests
-    from types import SimpleNamespace
-
     empty = {"messages": [{"status": "ok"}], "collection": []}
-
-    def _patched(url, **kw):
-        resp = SimpleNamespace(status_code=200, raise_for_status=lambda: None)
-        resp.json = lambda: empty
-        return resp
-
-    monkeypatch.setattr(requests, "get", _patched)
+    _install_response(monkeypatch, [empty])
     monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
 
     with open_dict(config.source):
@@ -39,32 +54,45 @@ def test_biorxiv_empty_response(config, monkeypatch):
     assert papers == []
 
 
-def test_biorxiv_orders_unpadded_dates_chronologically(config, monkeypatch):
-    import requests
-    from types import SimpleNamespace
-
-    response = {
-        "messages": [{"status": "ok"}],
-        "collection": [
-            {"date": "2026-6-30", "category": "neuroscience"},
-            {"date": "2026-07-15", "category": "bioinformatics"},
-        ],
-    }
-
-    def _patched(url, **kw):
-        result = SimpleNamespace(status_code=200, raise_for_status=lambda: None)
-        result.json = lambda: response
-        return result
-
-    monkeypatch.setattr(requests, "get", _patched)
+def test_biorxiv_requests_explicit_date_range(config, monkeypatch):
+    monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
+    requested = _install_response(monkeypatch, [SAMPLE_BIORXIV_API_RESPONSE])
 
     with open_dict(config.source):
         config.source.biorxiv = {"category": ["bioinformatics"]}
     retriever = BiorxivRetriever(config)
+    retriever._retrieve_raw_papers()
 
+    assert len(requested) == 1
+    assert "/details/biorxiv/" in requested[0]
+    from_str, to_str = requested[0].split("/details/biorxiv/")[1].split("/")[:2]
+    assert from_str < to_str  # explicit from/to dates instead of the "2d" alias
+
+
+def test_biorxiv_follows_pagination_cursor(config, monkeypatch):
+    monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
+    def _item(i, category="bioinformatics"):
+        return {
+            "doi": f"10.1101/2026.03.01.{i:06d}",
+            "title": f"Paper {i}",
+            "authors": "Smith, J.",
+            "abstract": "Abstract.",
+            "date": "2026-03-02",
+            "category": category,
+            "version": "1",
+        }
+
+    pages = [
+        {"messages": [{"status": "ok", "total": 3, "cursor": "2"}], "collection": [_item(1), _item(2)]},
+        {"messages": [{"status": "ok", "total": 3, "cursor": ""}], "collection": [_item(3)]},
+    ]
+    _install_response(monkeypatch, pages)
+
+    with open_dict(config.source):
+        config.source.biorxiv = {"category": ["bioinformatics"]}
+    retriever = BiorxivRetriever(config)
     raw_papers = retriever._retrieve_raw_papers()
-
-    assert raw_papers == [response["collection"][1]]
+    assert [c["title"] for c in raw_papers] == ["Paper 1", "Paper 2", "Paper 3"]
 
 
 def test_biorxiv_convert_to_paper(config):
@@ -77,6 +105,18 @@ def test_biorxiv_convert_to_paper(config):
     assert paper.source == "biorxiv"
     assert "biorxiv.org" in paper.pdf_url
     assert paper.authors == ["Smith, J.", "Doe, A.", "Lee, K."]
+    assert paper.doi == raw["doi"]
+    assert paper.source_id == raw["doi"]
+
+
+def test_biorxiv_raw_keys_use_doi_and_title(config):
+    with open_dict(config.source):
+        config.source.biorxiv = {"category": ["bioinformatics"]}
+    retriever = BiorxivRetriever(config)
+    raw = SAMPLE_BIORXIV_API_RESPONSE["collection"][0]
+    keys = retriever._raw_keys(raw)
+    assert "doi:10.1101/2026.03.01.000001" in keys
+    assert "title:abiorxivpaper" in keys
 
 
 def test_biorxiv_requires_category(config):

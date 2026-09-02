@@ -6,6 +6,7 @@ import tiktoken
 from openai import OpenAI
 from loguru import logger
 import json
+from .utils import normalize_doi, normalize_title
 from .personal_summary import (
     generate_deep_digest,
     generate_teaser,
@@ -55,6 +56,18 @@ class Paper:
     tldr_markdown: Optional[str] = None
     affiliations: Optional[list[str]] = None
     score: Optional[float] = None
+    doi: Optional[str] = None
+    source_id: Optional[str] = None
+
+    def dedup_keys(self) -> list[str]:
+        keys = []
+        if self.doi:
+            keys.append("doi:" + normalize_doi(self.doi))
+        if self.title:
+            keys.append("title:" + normalize_title(self.title))
+        if self.source_id:
+            keys.append(f"sid:{self.source}:{self.source_id}")
+        return keys
 
     def _generate_tldr_with_llm(self, openai_client:OpenAI,llm_params:dict) -> str:
         lang = llm_params.get('language', 'English')
@@ -159,3 +172,12 @@ class CorpusPaper:
     abstract: str
     added_date: datetime
     paths: list[str]
+    doi: Optional[str] = None
+
+    def dedup_keys(self) -> list[str]:
+        keys = []
+        if self.doi:
+            keys.append("doi:" + normalize_doi(self.doi))
+        if self.title:
+            keys.append("title:" + normalize_title(self.title))
+        return keys

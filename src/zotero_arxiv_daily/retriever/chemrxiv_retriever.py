@@ -9,6 +9,7 @@ from loguru import logger
 
 from .base import BaseRetriever, register_retriever
 from ..protocol import Paper
+from ..utils import normalize_doi, normalize_title
 
 
 @register_retriever("chemrxiv")
@@ -76,7 +77,9 @@ class ChemrxivRetriever(BaseRetriever):
         return match is not None and int(match.group(1)) > 1
 
     def _retrieve_raw_papers(self) -> list[dict[str, Any]]:
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=self.lookback_hours)
+        lookback_days = int(self.config.executor.get("lookback_days", 1) or 1)
+        lookback_hours = int(getattr(self.retriever_config, "lookback_hours", 0) or 0) or 24 * lookback_days
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
         include_new_versions = bool(getattr(self.retriever_config, "include_new_versions", False))
 
         collection = []
@@ -109,7 +112,7 @@ class ChemrxivRetriever(BaseRetriever):
                 break
 
         if len(collection) == 0:
-            logger.warning(f"No chemRxiv paper found in the last {self.lookback_hours} hours.")
+            logger.warning(f"No chemRxiv paper found in the last {lookback_hours} hours.")
         if self.config.executor.debug:
             collection = collection[:10]
         return collection
@@ -127,6 +130,15 @@ class ChemrxivRetriever(BaseRetriever):
         if author.get("name"):
             return author["name"].strip()
         return f"{author.get('given', '')} {author.get('family', '')}".strip()
+
+    def _raw_keys(self, raw_paper: dict[str, Any]) -> list[str]:
+        keys = []
+        if raw_paper.get("DOI"):
+            keys.append("doi:" + normalize_doi(raw_paper["DOI"]))
+        title = (raw_paper.get("title") or [""])[0] if raw_paper.get("title") else None
+        if title:
+            keys.append("title:" + normalize_title(self._clean_text(title)))
+        return keys
 
     def convert_to_paper(self, raw_paper: dict[str, Any]) -> Paper | None:
         doi = raw_paper["DOI"]
@@ -148,4 +160,6 @@ class ChemrxivRetriever(BaseRetriever):
             url=url,
             pdf_url=pdf_url,
             full_text=full_text,
+            doi=doi,
+            source_id=doi,
         )

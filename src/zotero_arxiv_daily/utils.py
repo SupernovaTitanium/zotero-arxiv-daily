@@ -19,6 +19,22 @@ import pymupdf4llm  # noqa: E402
 
 _TOKEN_RE = re.compile(r'[a-zA-Z0-9]+')
 
+_NON_ALNUM_RE = re.compile(r'[^a-z0-9]+')
+
+
+def normalize_title(title: str | None) -> str:
+    """Canonical form of a paper title for cross-source duplicate matching."""
+    return _NON_ALNUM_RE.sub('', (title or '').lower())
+
+
+def normalize_doi(doi: str | None) -> str:
+    """Canonical form of a DOI: lowercase, without any URL prefix."""
+    doi = (doi or '').lower().strip()
+    for prefix in ('https://doi.org/', 'http://doi.org/', 'doi.org/', 'doi:'):
+        if doi.startswith(prefix):
+            doi = doi[len(prefix):]
+    return doi
+
 def _tokenize(text: str) -> list[str]:
     return [t.lower() for t in _TOKEN_RE.findall(text)]
 

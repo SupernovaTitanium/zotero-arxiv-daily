@@ -302,7 +302,7 @@ def test_run_end_to_end(config, monkeypatch):
     monkeypatch.setattr(
         registered_retrievers["arxiv"],
         "retrieve_papers",
-        lambda self: retrieved,
+        lambda self, **kw: retrieved,
     )
 
     # 4. Stub SMTP
@@ -351,7 +351,7 @@ def test_run_detail_modes_generate_affiliations(config, monkeypatch, summary_mod
 
     from zotero_arxiv_daily.retriever.base import registered_retrievers
 
-    monkeypatch.setattr(registered_retrievers["arxiv"], "retrieve_papers", lambda self: [make_sample_paper(score=None)])
+    monkeypatch.setattr(registered_retrievers["arxiv"], "retrieve_papers", lambda self, **kw: [make_sample_paper(score=None)])
     calls = []
     monkeypatch.setattr("zotero_arxiv_daily.protocol.Paper.generate_affiliations", lambda self, *a: calls.append(self.title))
 
@@ -389,7 +389,7 @@ def test_run_no_papers_send_empty_false(config, monkeypatch):
 
     from zotero_arxiv_daily.retriever.base import registered_retrievers
 
-    monkeypatch.setattr(registered_retrievers["arxiv"], "retrieve_papers", lambda self: [])
+    monkeypatch.setattr(registered_retrievers["arxiv"], "retrieve_papers", lambda self, **kw: [])
 
     sent = []
     monkeypatch.setattr(smtplib, "SMTP", make_stub_smtp(sent))
@@ -425,7 +425,7 @@ def test_run_no_papers_send_empty_true(config, monkeypatch):
 
     from zotero_arxiv_daily.retriever.base import registered_retrievers
 
-    monkeypatch.setattr(registered_retrievers["arxiv"], "retrieve_papers", lambda self: [])
+    monkeypatch.setattr(registered_retrievers["arxiv"], "retrieve_papers", lambda self, **kw: [])
 
     sent = []
     monkeypatch.setattr(smtplib, "SMTP", make_stub_smtp(sent))
@@ -437,3 +437,109 @@ def test_run_no_papers_send_empty_true(config, monkeypatch):
     assert len(sent) == 1, "Email should be sent even with no papers when send_empty=true"
     _, _, body = sent[0]
     assert "text/html" in body
+
+
+# ---------------------------------------------------------------------------
+# Dedup state: seen keys, history recording
+# ---------------------------------------------------------------------------
+
+
+def test_build_seen_keys_merges_corpus_and_history(config, tmp_path):
+    from zotero_arxiv_daily.state import RecommendedHistory
+
+    executor = Executor.__new__(Executor)
+    executor.config = config
+    executor.state_file = str(tmp_path / "state.json")
+    executor.history = RecommendedHistory.load(executor.state_file)
+    executor.history.record(["sid:arxiv:2609.00001"])
+
+    corpus = [
+        CorpusPaper(
+            title="Stub Paper 1",
+            abstract="",
+            added_date=datetime(2026, 1, 1),
+            paths=["survey"],
+            doi="10.1101/abc",
+        )
+    ]
+    seen = executor.build_seen_keys(corpus)
+    assert "title:stubpaper1" in seen
+    assert "doi:10.1101/abc" in seen
+    assert "sid:arxiv:2609.00001" in seen
+
+
+def test_run_records_history_and_passes_corpus_keys_to_retriever(config, monkeypatch, tmp_path):
+    import json
+    import smtplib
+
+    from omegaconf import open_dict
+
+    from tests.canned_responses import make_sample_paper, make_stub_openai_client, make_stub_smtp, make_stub_zotero_client
+
+    state_path = tmp_path / "state.json"
+    with open_dict(config):
+        config.executor.state_file = str(state_path)
+
+    monkeypatch.setattr("zotero_arxiv_daily.executor.zotero.Zotero", lambda *a, **kw: make_stub_zotero_client())
+    stub_client = make_stub_openai_client()
+    monkeypatch.setattr("zotero_arxiv_daily.executor.OpenAI", lambda **kw: stub_client)
+    monkeypatch.setattr("zotero_arxiv_daily.reranker.api.OpenAI", lambda **kw: stub_client)
+
+    import zotero_arxiv_daily.retriever.arxiv_retriever  # noqa: F401
+    from zotero_arxiv_daily.retriever.base import registered_retrievers
+
+    captured = {}
+
+    def fake_retrieve(self, seen_keys=None):
+        captured["seen"] = seen_keys
+        return [make_sample_paper(title="Brand New Paper", score=None)]
+
+    monkeypatch.setattr(registered_retrievers["arxiv"], "retrieve_papers", fake_retrieve)
+
+    sent = []
+    monkeypatch.setattr(smtplib, "SMTP", make_stub_smtp(sent))
+    monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
+
+    Executor(config).run()
+
+    # corpus titles are handed to the retriever for dedup
+    assert "title:stubpaper1" in captured["seen"]
+    # and the new paper is recorded only after the email was sent
+    assert len(sent) == 1
+    entries = json.loads(state_path.read_text(encoding="utf-8"))
+    assert "title:brandnewpaper" in entries
+
+
+def test_run_does_not_save_history_when_email_fails(config, monkeypatch, tmp_path):
+    from omegaconf import open_dict
+
+    from tests.canned_responses import make_sample_paper, make_stub_openai_client, make_stub_zotero_client
+
+    state_path = tmp_path / "state.json"
+    with open_dict(config):
+        config.executor.state_file = str(state_path)
+
+    monkeypatch.setattr("zotero_arxiv_daily.executor.zotero.Zotero", lambda *a, **kw: make_stub_zotero_client())
+    stub_client = make_stub_openai_client()
+    monkeypatch.setattr("zotero_arxiv_daily.executor.OpenAI", lambda **kw: stub_client)
+    monkeypatch.setattr("zotero_arxiv_daily.reranker.api.OpenAI", lambda **kw: stub_client)
+
+    import zotero_arxiv_daily.retriever.arxiv_retriever  # noqa: F401
+    from zotero_arxiv_daily.retriever.base import registered_retrievers
+
+    monkeypatch.setattr(
+        registered_retrievers["arxiv"],
+        "retrieve_papers",
+        lambda self, **kw: [make_sample_paper(title="Doomed Paper", score=None)],
+    )
+
+    def _fail_send(config, html):
+        raise RuntimeError("SMTP down")
+
+    monkeypatch.setattr("zotero_arxiv_daily.executor.send_email", _fail_send)
+    monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
+
+    executor = Executor(config)
+    with pytest.raises(RuntimeError, match="SMTP down"):
+        executor.run()
+    assert not state_path.exists(), "history must not be persisted when the email fails"

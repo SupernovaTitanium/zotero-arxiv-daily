@@ -64,3 +64,6 @@ executor:
   max_paper_num: 100 # The maximum number of the papers presented in the email. Example: 100
   source: ??? # The sources of papers to retrieve. Example: ['arxiv','biorxiv','medrxiv','chemrxiv']
   reranker: local # The reranker to use. Example: 'local' or 'api'
+  lookback_days: 3 # How many days back to retrieve new papers, so a missed or failed run is caught up by the next run. Example: 3
+  state_file: state/recommended.json # File storing papers already processed (never recommended twice). Persist it between runs (e.g. actions/cache). null disables. Example: state/recommended.json
+  history_days: 30 # How many days of processed-paper history to keep in the state file. Example: 30

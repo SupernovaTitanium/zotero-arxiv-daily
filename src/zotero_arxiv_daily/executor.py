@@ -10,6 +10,7 @@ from datetime import datetime
 from .reranker import get_reranker_cls
 from .construct_email import render_email
 from .utils import send_email
+from .state import RecommendedHistory
 from openai import OpenAI
 from tqdm import tqdm
 from .personal_summary import get_summary_mode
@@ -44,6 +45,11 @@ class Executor:
             source: get_retriever_cls(source)(config) for source in config.executor.source
         }
         self.reranker = get_reranker_cls(config.executor.reranker)(config)
+        self.state_file = config.executor.get("state_file", None)
+        self.history = (
+            RecommendedHistory.load(self.state_file) if self.state_file else None
+        )
+        self.history_days = int(config.executor.get("history_days", 30) or 30)
         self.openai_client = rate_limit_openai_client(
             OpenAI(api_key=config.llm.api.key, base_url=config.llm.api.base_url),
             config.llm.get("requests_per_minute", 10),
@@ -71,7 +77,8 @@ class Executor:
             title=c['data']['title'],
             abstract=c['data']['abstractNote'],
             added_date=datetime.strptime(c['data']['dateAdded'], '%Y-%m-%dT%H:%M:%SZ'),
-            paths=c['paths']
+            paths=c['paths'],
+            doi=c['data'].get('DOI') or None,
         ) for c in corpus]
     
     def filter_corpus(self, corpus:list[CorpusPaper]) -> list[CorpusPaper]:
@@ -102,16 +109,38 @@ class Executor:
         return corpus
 
     
+    def build_seen_keys(self, corpus: list[CorpusPaper]) -> set[str]:
+        """Keys of papers that must not be recommended: already in the Zotero
+        corpus (matched by DOI or title, across sources) or already processed
+        in a previous run."""
+        seen: set[str] = set()
+        for c in corpus:
+            seen.update(c.dedup_keys())
+        if self.history is not None:
+            seen.update(self.history.seen_keys())
+        logger.info(f"Deduplicating against {len(seen)} known keys")
+        return seen
+
+    def record_history(self, papers: list) -> None:
+        if self.history is None:
+            return
+        for p in papers:
+            self.history.record(p.dedup_keys())
+        self.history.prune(self.history_days)
+        self.history.save()
+        logger.info(f"Recorded {len(papers)} papers into {self.state_file}")
+
     def run(self):
         corpus = self.fetch_zotero_corpus()
         corpus = self.filter_corpus(corpus)
         if len(corpus) == 0:
             logger.error(f"No zotero papers found. Please check your zotero settings:\n{self.config.zotero}")
             return
+        seen_keys = self.build_seen_keys(corpus)
         all_papers = []
         for source, retriever in self.retrievers.items():
             logger.info(f"Retrieving {source} papers...")
-            papers = retriever.retrieve_papers()
+            papers = retriever.retrieve_papers(seen_keys=seen_keys)
             if len(papers) == 0:
                 logger.info(f"No {source} papers found")
                 continue
@@ -135,3 +164,6 @@ class Executor:
         email_content = render_email(reranked_papers, self.config.llm.summary)
         send_email(self.config, email_content)
         logger.info("Email sent successfully")
+        # Only persist history after the email is delivered, so a failed run
+        # does not silently swallow that day's papers.
+        self.record_history(all_papers)

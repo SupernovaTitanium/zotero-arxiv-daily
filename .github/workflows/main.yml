@@ -17,6 +17,13 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v7
 
+      - name: Restore recommendation state
+        uses: actions/cache/restore@v4
+        with:
+          path: state/recommended.json
+          key: recommended-${{ github.run_id }}
+          restore-keys: recommended-
+
       - name: Run script
         env:
           ZOTERO_ID: ${{ secrets.ZOTERO_ID }}
@@ -37,3 +44,10 @@ jobs:
           echo "Use custom config: "
           cat config/custom.yaml
           uv run src/zotero_arxiv_daily/main.py
+
+      - name: Save recommendation state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state/recommended.json
+          key: recommended-${{ github.run_id }}

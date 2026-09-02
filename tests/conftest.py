@@ -45,6 +45,7 @@ def _base_config():
                 "executor.reranker=api",
                 "executor.debug=false",
                 "executor.send_empty=false",
+                "executor.state_file=null",
             ],
         )
     return cfg

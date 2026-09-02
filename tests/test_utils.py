@@ -344,3 +344,24 @@ class TestBm25Pick:
         candidates = {"a.tex": "hello", "b.tex": "world"}
         result = _bm25_pick("", candidates)
         assert result in candidates
+
+
+# ---------------------------------------------------------------------------
+# normalize_title / normalize_doi — dedup key normalization
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_title_strips_case_and_punctuation():
+    from zotero_arxiv_daily.utils import normalize_title
+    assert normalize_title("A  Self-Attention: Revisited!") == "aselfattentionrevisited"
+    assert normalize_title("Hello World") == "helloworld"
+    assert normalize_title(None) == ""
+    assert normalize_title("") == ""
+
+
+def test_normalize_doi_strips_url_prefix_and_case():
+    from zotero_arxiv_daily.utils import normalize_doi
+    assert normalize_doi("https://doi.org/10.1101/2026.03.01.1") == "10.1101/2026.03.01.1"
+    assert normalize_doi("DOI:10.26434/ABC") == "10.26434/abc"
+    assert normalize_doi("10.1/x") == "10.1/x"
+    assert normalize_doi(None) == ""

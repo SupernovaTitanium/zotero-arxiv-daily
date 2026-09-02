@@ -121,6 +121,19 @@ def test_retrieve_papers_empty_raw(config, monkeypatch):
     assert papers == []
 
 
+def test_retrieve_papers_filters_seen_keys(config, monkeypatch):
+    """Papers matching seen_keys are skipped before convert_to_paper runs."""
+    monkeypatch.setattr("zotero_arxiv_daily.retriever.base.sleep", lambda _: None)
+    with open_dict(config.source):
+        config.source.serial_test = {}
+    converted: list[str] = []
+    retriever = SerialTestRetriever(config, converted)
+    papers = retriever.retrieve_papers(seen_keys={"title:paper2"})
+    # convert_to_paper never ran for "paper 2"
+    assert converted == ["paper 1", "paper 3"]
+    assert [p.title for p in papers] == ["paper 1", "paper 3"]
+
+
 def test_get_retriever_cls_unknown():
     import pytest
     with pytest.raises(ValueError, match="not found"):

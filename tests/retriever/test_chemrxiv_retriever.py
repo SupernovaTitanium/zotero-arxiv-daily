@@ -65,12 +65,13 @@ def test_chemrxiv_retrieve_filters_by_date_and_version(config, monkeypatch, fixe
     calls = _patch_pages(monkeypatch, [SAMPLE_CHEMRXIV_API_RESPONSE])
     retriever = _configure(config)
     papers = retriever.retrieve_papers()
-    # v2 revision dropped; old paper outside 24h window dropped.
+    # v2 revision dropped; old paper outside the lookback window dropped.
     assert [p.title for p in papers] == ["A chemrxiv paper", "Another chemrxiv paper"]
     assert calls[0]["sort"] == "created"
     assert calls[0]["order"] == "desc"
     assert calls[0]["rows"] == 100
-    assert calls[0]["filter"] == "type:posted-content,from-created-date:2026-03-01"
+    # lookback_days=3 (default) before FIXED_NOW=2026-03-02
+    assert calls[0]["filter"] == "type:posted-content,from-created-date:2026-02-27"
 
 
 def test_chemrxiv_include_new_versions(config, monkeypatch, fixed_now):

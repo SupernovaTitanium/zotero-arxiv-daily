@@ -2,12 +2,13 @@ from .base import BaseRetriever, register_retriever
 import arxiv
 from arxiv import Result as ArxivResult
 from ..protocol import Paper
-from ..utils import extract_markdown_from_pdf, extract_tex_code_from_tar
+from ..utils import extract_markdown_from_pdf, extract_tex_code_from_tar, normalize_doi, normalize_title
 from tempfile import TemporaryDirectory
-import feedparser
 from tqdm import tqdm
 import multiprocessing
 import os
+import re
+from datetime import datetime, timedelta, timezone
 from queue import Empty
 from time import sleep
 from typing import Any, Callable, TypeVar
@@ -115,46 +116,59 @@ class ArxivRetriever(BaseRetriever):
 
     def _retrieve_raw_papers(self) -> list[ArxivResult]:
         client = arxiv.Client(num_retries=10, delay_seconds=10)
-        query = '+'.join(self.config.source.arxiv.category)
+        categories = list(self.config.source.arxiv.category)
         include_cross_list = self.config.source.arxiv.get("include_cross_list", False)
-        # Get the latest paper from arxiv rss feed
-        feed = feedparser.parse(f"https://rss.arxiv.org/atom/{query}")
-        if 'Feed error for query' in feed.feed.title:
-            raise Exception(f"Invalid ARXIV_QUERY: {query}.")
+        lookback_days = int(self.config.executor.get("lookback_days", 1) or 1)
+        # Query papers submitted in the last N days instead of the daily RSS feed.
+        # A date range makes retrieval idempotent: if a scheduled run is missed or
+        # fails, the next run still covers the missed days.
+        now = datetime.now(timezone.utc)
+        start = now - timedelta(days=lookback_days - 1)
+        query = (
+            f"({' OR '.join('cat:' + c for c in categories)})"
+            f" AND submittedDate:[{start:%Y%m%d%H%M} TO {now:%Y%m%d%H%M}]"
+        )
+        search = arxiv.Search(
+            query=query, sort_by=arxiv.SortCriterion.SubmittedDate, max_results=None
+        )
         raw_papers = []
-        allowed_announce_types = {"new", "cross"} if include_cross_list else {"new"}
-        all_paper_ids = [
-            i.id.removeprefix("oai:arXiv.org:")
-            for i in feed.entries
-            if i.get("arxiv_announce_type", "new") in allowed_announce_types
-        ]
+        max_retries = 5
+        retry_delay = 30
+        for attempt in range(max_retries):
+            try:
+                for result in client.results(search):
+                    if (
+                        not include_cross_list
+                        and result.primary_category not in categories
+                    ):
+                        continue
+                    raw_papers.append(result)
+                break
+            except arxiv.HTTPError as exc:
+                if exc.status == 429 and attempt < max_retries - 1:
+                    wait = retry_delay * (attempt + 1)
+                    logger.warning(f"arXiv API 429, retry {attempt + 1}/{max_retries} in {wait}s")
+                    sleep(wait)
+                else:
+                    raise
         if self.config.executor.debug:
-            all_paper_ids = all_paper_ids[:10]
-
-        # Get full information of each paper from arxiv api
-        bar = tqdm(total=len(all_paper_ids))
-        max_batch_retries = 5
-        batch_retry_delay = 30
-        for i in range(0, len(all_paper_ids), 20):
-            search = arxiv.Search(id_list=all_paper_ids[i:i + 20])
-            for attempt in range(max_batch_retries):
-                try:
-                    batch = list(client.results(search))
-                    bar.update(len(batch))
-                    raw_papers.extend(batch)
-                    break
-                except arxiv.HTTPError as exc:
-                    if exc.status == 429 and attempt < max_batch_retries - 1:
-                        wait = batch_retry_delay * (attempt + 1)
-                        logger.warning(f"arXiv API 429 on batch {i // 20}, retry {attempt + 1}/{max_batch_retries} in {wait}s")
-                        sleep(wait)
-                    else:
-                        raise
-            if i + 20 < len(all_paper_ids):
-                sleep(3)
-        bar.close()
-
+            raw_papers = raw_papers[:10]
         return raw_papers
+
+    @staticmethod
+    def _short_id(entry_id: str) -> str:
+        # "https://arxiv.org/abs/2609.01234v2" -> "2609.01234" (version-less)
+        tail = entry_id.rstrip("/").rsplit("/abs/", 1)[-1]
+        return re.sub(r"v\d+$", "", tail)
+
+    def _raw_keys(self, raw_paper: ArxivResult) -> list[str]:
+        keys = []
+        if raw_paper.doi:
+            keys.append("doi:" + normalize_doi(raw_paper.doi))
+        if raw_paper.title:
+            keys.append("title:" + normalize_title(raw_paper.title))
+        keys.append("sid:arxiv:" + self._short_id(raw_paper.entry_id))
+        return keys
 
     def convert_to_paper(self, raw_paper: ArxivResult) -> Paper:
         title = raw_paper.title
@@ -174,6 +188,8 @@ class ArxivRetriever(BaseRetriever):
             url=raw_paper.entry_id,
             pdf_url=pdf_url,
             full_text=full_text,
+            doi=raw_paper.doi,
+            source_id=self._short_id(raw_paper.entry_id),
         )
 
 
