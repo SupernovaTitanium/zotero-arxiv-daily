@@ -122,7 +122,9 @@ class ArxivRetriever(BaseRetriever):
         # A date range makes retrieval idempotent: if a scheduled run is missed or
         # fails, the next run still covers the missed days.
         now = datetime.now(timezone.utc)
-        start = now - timedelta(days=lookback_days - 1)
+        # submittedDate is a timestamp (not a calendar date), so the window is
+        # the last N*24h: lookback_days=1 covers the previous 24 hours.
+        start = now - timedelta(days=lookback_days)
         query = (
             f"({' OR '.join('cat:' + c for c in categories)})"
             f" AND submittedDate:[{start:%Y%m%d%H%M} TO {now:%Y%m%d%H%M}]"
