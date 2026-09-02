@@ -42,6 +42,7 @@ llm:
     system_prompt: null # Override the deep digest system prompt. null uses the built-in prompt.
 
 reranker:
+  corpus_cache_file: state/corpus_embeddings.npz # Cache of corpus abstract vectors, so unchanged Zotero papers are not re-embedded every run. Invalidated automatically when the embedding model changes. Persist it between runs (e.g. via actions/cache). null disables. Example: state/corpus_embeddings.npz
   local:
     model: jinaai/jina-embeddings-v5-text-nano-retrieval # The Hugging Face model name of the local embedding model. Example: jinaai/jina-embeddings-v5-text-nano
     encode_kwargs:

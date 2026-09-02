@@ -20,7 +20,10 @@ jobs:
       - name: Restore recommendation state
         uses: actions/cache/restore@v4
         with:
-          path: state/recommended.json
+          path: |
+            state/recommended.json
+            state/corpus_embeddings.npz
+            ~/.cache/huggingface
           key: recommended-${{ github.run_id }}
           restore-keys: recommended-
 
@@ -49,5 +52,8 @@ jobs:
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: state/recommended.json
+          path: |
+            state/recommended.json
+            state/corpus_embeddings.npz
+            ~/.cache/huggingface
           key: recommended-${{ github.run_id }}

@@ -40,6 +40,7 @@ def _base_config():
                 "reranker.api.key=sk-fake",
                 "reranker.api.base_url=http://localhost:30000/v1",
                 "reranker.api.model=text-embedding-3-large",
+                "reranker.corpus_cache_file=null",
                 "source.arxiv.category=[cs.AI,cs.CV]",
                 "executor.source=[arxiv]",
                 "executor.reranker=api",
