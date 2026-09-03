@@ -92,3 +92,15 @@ def test_get_block_html_contains_all_fields():
 def test_get_empty_html():
     html = get_empty_html()
     assert "No Papers Today" in html
+
+
+def test_render_email_topic_headers_teaser_mode():
+    paper_a = make_sample_paper(title="Topic One Paper", abstract="abstract a")
+    paper_a.teaser = "Teaser a"
+    paper_a.topic = "Vision Research 等 2 篇"
+    paper_b = make_sample_paper(title="Topic Two Paper", abstract="abstract b")
+    paper_b.teaser = "Teaser b"
+    html = render_email([paper_a, paper_b], {"mode": "teaser", "teaser_char_limit": 100})
+    assert "📂 Vision Research 等 2 篇" in html
+    # header appears once, before the first member
+    assert html.index("📂") < html.index("Topic One Paper")

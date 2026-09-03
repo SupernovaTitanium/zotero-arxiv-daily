@@ -450,7 +450,7 @@ def test_build_seen_keys_merges_corpus_and_history(config, tmp_path):
     executor.config = config
     executor.state_file = str(tmp_path / "state.json")
     executor.history = RecommendedHistory.load(executor.state_file)
-    executor.history.record(["sid:arxiv:2609.00001"])
+    executor.history.record_paper(["sid:arxiv:2609.00001"])
 
     corpus = [
         CorpusPaper(
@@ -505,8 +505,9 @@ def test_run_records_history_and_passes_corpus_keys_to_retriever(config, monkeyp
     assert "title:stubpaper1" in captured["seen"]
     # and the new paper is recorded only after the email was sent
     assert len(sent) == 1
-    entries = json.loads(state_path.read_text(encoding="utf-8"))
+    entries = json.loads(state_path.read_text(encoding="utf-8"))["papers"]
     assert "title:brandnewpaper" in entries
+    assert entries["title:brandnewpaper"]["presented"] is True
 
 
 def test_run_does_not_save_history_when_email_fails(config, monkeypatch, tmp_path):
@@ -707,3 +708,97 @@ def test_retrievers_share_seen_keys_within_run(config, monkeypatch):
     assert converted == []  # normalized-title key matches -> skipped before conversion
     assert papers == []
     assert second.last_skipped == 1
+
+
+def test_apply_preferences_reorders_and_config_load(config, tmp_path):
+    from omegaconf import open_dict
+
+    from tests.canned_responses import make_sample_paper as _msp
+
+    from zotero_arxiv_daily.preferences import load_preferences, save_preferences, Preferences
+
+    prefs_path = tmp_path / "preferences.yaml"
+    save_preferences(prefs_path, Preferences(boost=["robotics"], mute=[]), "2026-09-09", {"saved": 1, "ignored": 1})
+
+    with open_dict(config.executor):
+        config.executor.preferences_file = str(prefs_path)
+        config.executor.preference_boost_weight = 5.0
+        config.executor.preference_mute_weight = 1.0
+        config.executor.topic_threshold = 0.9
+
+    executor = Executor.__new__(Executor)
+    executor.preferences = load_preferences(str(prefs_path))
+    executor.pref_boost_weight = 5.0
+    executor.pref_mute_weight = 1.0
+    executor.topic_threshold = 0.9
+
+    papers = [
+        _msp(title="Robot Arm Learning", abstract="robotics manipulation", score=1.0),
+        _msp(title="Something Else", abstract="other stuff", score=5.0),
+    ]
+    result = executor._apply_preferences(papers)
+    assert result[0].title == "Robot Arm Learning"
+
+
+def test_assign_topics_groups_similar_papers(config):
+    import numpy as np
+
+    from omegaconf import open_dict
+
+    from tests.canned_responses import make_sample_paper as _msp
+
+    with open_dict(config.executor):
+        config.executor.topic_threshold = 0.9
+
+    executor = Executor.__new__(Executor)
+    executor.topic_threshold = 0.9
+
+    class _VecReranker:
+        def embed(self, texts):
+            out = []
+            for t in texts:
+                if "Vision" in t:
+                    out.append([1.0, 0.0])
+                elif "Diffusion" in t:
+                    out.append([0.0, 1.0])
+                else:
+                    out.append([0.7, 0.7])
+            return np.array(out)
+
+    executor.reranker = _VecReranker()
+
+    papers = [
+        _msp(title="Vision Model A", abstract="Vision research one"),
+        _msp(title="Vision Model B", abstract="Vision research two"),
+        _msp(title="Diffusion Study", abstract="Diffusion research"),
+    ]
+    executor._assign_topics(papers)
+    assert papers[0].topic == papers[1].topic
+    assert "Vision Model A" in papers[0].topic
+    assert papers[2].topic is None
+
+
+def test_record_history_marks_presented(config, tmp_path):
+    import json as _json
+    from omegaconf import open_dict
+
+    from tests.canned_responses import make_sample_paper as _msp
+    from zotero_arxiv_daily.state import RecommendedHistory
+
+    state_path = tmp_path / "state.json"
+    with open_dict(config.executor):
+        config.executor.state_file = str(state_path)
+
+    executor = Executor.__new__(Executor)
+    executor.config = config
+    executor.state_file = str(state_path)
+    executor.history = RecommendedHistory.load(state_path)
+    executor.history_days = 30
+
+    shown = _msp(title="Shown Paper", abstract="abs")
+    hidden = _msp(title="Hidden Paper", abstract="abs")
+    executor.record_history([shown], [shown, hidden])
+
+    data = _json.loads(state_path.read_text(encoding="utf-8"))["papers"]
+    assert data["title:shownpaper"]["presented"] is True
+    assert data["title:hiddenpaper"]["presented"] is False

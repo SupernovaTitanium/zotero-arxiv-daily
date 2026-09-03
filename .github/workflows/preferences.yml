@@ -1,0 +1,63 @@
+name: Weekly preference review
+on:
+  workflow_dispatch:
+  schedule:
+    # Mondays 06:00 UTC — infer boost/mute keywords from the past weeks of
+    # implicit feedback (saved vs ignored recommendations) and commit
+    # preferences.yaml.
+    - cron: '0 6 * * 1'
+
+concurrency:
+  group: weekly-preferences
+  cancel-in-progress: false
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ vars.REPOSITORY }}
+          ref: ${{ vars.REF }}
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Restore recommendation state
+        uses: actions/cache/restore@v4
+        with:
+          path: state/recommended.json
+          key: preferences-${{ github.run_id }}
+          restore-keys: recommended-
+
+      - name: Run review
+        env:
+          ZOTERO_ID: ${{ secrets.ZOTERO_ID }}
+          ZOTERO_KEY: ${{ secrets.ZOTERO_KEY }}
+          SENDER: ${{ secrets.SENDER }}
+          RECEIVER: ${{ secrets.RECEIVER }}
+          SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          EMAIL_SMTP_SERVER: ${{ vars.EMAIL_SMTP_SERVER }}
+          EMAIL_SMTP_PORT: ${{ vars.EMAIL_SMTP_PORT }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+          CUSTOM_CONFIG: ${{ vars.CUSTOM_CONFIG }}
+        run: |
+          printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
+          uv run python scripts/apply_config_env_overrides.py config/custom.yaml
+          uv run python scripts/weekly_preference_review.py
+
+      - name: Commit preferences
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add preferences.yaml
+          if git diff --staged --quiet; then
+            echo "No preference changes"
+          else
+            git commit -m "chore: update preference keywords from weekly review [skip ci]"
+            git push
+          fi

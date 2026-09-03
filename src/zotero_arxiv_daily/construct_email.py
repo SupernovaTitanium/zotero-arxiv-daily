@@ -142,7 +142,17 @@ def get_block_html(title:str, authors:str, rate:str, tldr:str, pdf_url:str, affi
 def _build_summary_section(papers: list[Paper], summary_config, include_details: bool) -> str:
     limit = _teaser_char_limit(summary_config)
     items = []
+    current_topic = None
     for p in papers:
+        topic = getattr(p, "topic", None)
+        if topic and topic != current_topic:
+            current_topic = topic
+            items.append(
+                '<li style="list-style: none; margin: 12px 0 4px -20px;">'
+                '<div style="font-size: 13px; font-weight: bold; color: #b5502a;'
+                ' border-bottom: 1px solid #f0d9c0; padding-bottom: 2px;">'
+                f'📂 {html.escape(topic)}</div></li>'
+            )
         summary = p.teaser or p.tldr or p.abstract or ""
         if len(summary) > limit:
             summary = summary[:limit].rstrip() + "..."

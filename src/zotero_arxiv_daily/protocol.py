@@ -25,6 +25,7 @@ class Paper:
     score: Optional[float] = None
     doi: Optional[str] = None
     source_id: Optional[str] = None
+    topic: Optional[str] = None
 
     def dedup_keys(self) -> list[str]:
         keys = []

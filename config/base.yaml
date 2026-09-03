@@ -70,6 +70,11 @@ executor:
   lookback_days: 3 # How many days back to retrieve new papers, so a missed or failed run is caught up by the next run. Example: 3
   state_file: state/recommended.json # File storing papers already processed (never recommended twice). Persist it between runs (e.g. actions/cache). null disables. Example: state/recommended.json
   history_days: 30 # How many days of processed-paper history to keep in the state file. Example: 30
+  preferences_file: preferences.yaml # Topic-level boost/mute keywords applied to ranking after embedding scoring. Written weekly by the preference-review workflow from implicit feedback (saved vs ignored); edit freely. null disables. Example: preferences.yaml
+  preference_boost_weight: 1.0 # Score bonus per matched boost keyword. Example: 1.0
+  preference_mute_weight: 1.5 # Score penalty per matched mute keyword. Example: 1.5
+  preference_grace_days: 5 # A presented recommendation younger than this is not counted as "ignored" by the weekly review (you may still save it). Example: 5
+  topic_threshold: 0.5 # Cosine similarity threshold for grouping email papers under one topic header. Example: 0.5
   fulltext_paper_num: 30 # After ranking on abstracts, full text is fetched only for the top N papers (two-stage pipeline); the rest are summarized from the abstract. Example: 30
   fulltext_workers: 4 # Parallel workers fetching full texts. Example: 4
   output_dir: output # Directory for the rendered email and run summary (full ranking + stats), uploaded as a workflow artifact for debugging. null disables. Example: output

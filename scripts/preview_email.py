@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import struct
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,13 +21,12 @@ from types import SimpleNamespace
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from hydra import compose, initialize_config_dir
-from hydra.core.global_hydra import GlobalHydra
-from loguru import logger
-from omegaconf import OmegaConf
+from hydra import compose, initialize_config_dir  # noqa: E402
+from hydra.core.global_hydra import GlobalHydra  # noqa: E402
+from loguru import logger  # noqa: E402
+from omegaconf import OmegaConf  # noqa: E402
 
-import zotero_arxiv_daily.executor as executor_module
-from zotero_arxiv_daily.personal_summary import generate_teaser, generate_teasers_batch
+import zotero_arxiv_daily.executor as executor_module  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fake Zotero corpus
@@ -185,6 +183,7 @@ def _load_config(max_papers: int):
                 "executor.output_dir=output",
                 f"executor.max_paper_num={max_papers}",
                 "executor.fulltext_paper_num=0",
+                "executor.topic_threshold=0.1",  # stub hash vectors are near-orthogonal
             ],
         )
 

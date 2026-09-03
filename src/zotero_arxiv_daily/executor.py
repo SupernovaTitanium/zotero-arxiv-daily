@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from pathlib import Path
 
+import numpy as np
 from loguru import logger
 from omegaconf import DictConfig, ListConfig
 from openai import OpenAI
@@ -14,6 +15,7 @@ from tqdm import tqdm
 from .construct_email import render_email
 from .mailer import send_email
 from .personal_summary import generate_teasers_batch, get_summary_mode
+from .preferences import apply_preferences, load_preferences
 from .protocol import CorpusPaper
 from .rate_limit import rate_limit_openai_client
 from .reranker import get_reranker_cls
@@ -74,6 +76,11 @@ class Executor:
         )
         self.history_days = int(config.executor.get("history_days", 30) or 30)
         self.output_dir = config.executor.get("output_dir", None)
+        prefs_file = config.executor.get("preferences_file", None)
+        self.preferences = load_preferences(prefs_file)
+        self.pref_boost_weight = float(config.executor.get("preference_boost_weight", 1.0) or 1.0)
+        self.pref_mute_weight = float(config.executor.get("preference_mute_weight", 1.5) or 1.5)
+        self.topic_threshold = float(config.executor.get("topic_threshold", 0.5) or 0.5)
 
     def fetch_zotero_corpus(self) -> list[CorpusPaper]:
         logger.info("Fetching zotero corpus")
@@ -141,14 +148,68 @@ class Executor:
         logger.info(f"Deduplicating against {len(seen)} known keys")
         return seen
 
-    def record_history(self, papers: list) -> None:
+    def record_history(self, presented: list, all_papers: list) -> None:
         if self.history is None:
             return
-        for p in papers:
-            self.history.record(p.dedup_keys())
+        presented_ids = {id(p) for p in presented}
+        for p in all_papers:
+            self.history.record_paper(
+                p.dedup_keys(),
+                title=p.title or "",
+                abstract=p.abstract or "",
+                presented=id(p) in presented_ids,
+            )
         self.history.prune(self.history_days)
         self.history.save()
-        logger.info(f"Recorded {len(papers)} papers into {self.state_file}")
+        logger.info(f"Recorded {len(presented)}/{len(all_papers)} presented papers into {self.state_file}")
+
+    def _apply_preferences(self, papers: list) -> list:
+        """Apply the weekly-review preference keywords on top of the embedding
+        scores, then re-sort. A no-op without a preferences file."""
+        if self.preferences is None or self.preferences.is_empty():
+            return papers
+        before = [p.title for p in papers[:5]]
+        apply_preferences(papers, self.preferences, self.pref_boost_weight, self.pref_mute_weight)
+        after = [p.title for p in papers[:5]]
+        if before != after:
+            logger.info(f"Preferences reordered top papers (boost={self.preferences.boost}, mute={self.preferences.mute})")
+        return papers
+
+    def _assign_topics(self, papers: list) -> None:
+        """Greedy threshold clustering over candidate embeddings; clusters with
+        2+ papers get a topic label (the top paper's title) shown in the email."""
+        if not papers:
+            return
+        try:
+            embeddings = np.asarray(self.reranker.embed([f"{p.title}. {p.abstract}" for p in papers]), dtype=np.float32)
+        except Exception as e:
+            logger.warning(f"Topic clustering skipped: {e}")
+            return
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        embeddings = embeddings / norms
+        clusters: list[dict] = []  # {"centroid": vec, "members": [idx]}
+        for i in range(len(papers)):
+            best, best_sim = None, self.topic_threshold
+            for c in clusters:
+                sim = float(embeddings[i] @ c["centroid"])
+                if sim >= best_sim:
+                    best, best_sim = c, sim
+            if best is None:
+                clusters.append({"centroid": embeddings[i].copy(), "members": [i]})
+            else:
+                members = best["members"]
+                members.append(i)
+                best["centroid"] = embeddings[members].mean(axis=0)
+        for c in clusters:
+            if len(c["members"]) < 2:
+                continue
+            label = papers[c["members"][0]].title or ""
+            label = label[:50] + ("…" if len(label) > 50 else "")
+            for idx in c["members"]:
+                papers[idx].topic = label
+        n_topics = sum(1 for c in clusters if len(c["members"]) >= 2)
+        logger.info(f"Grouped {len(papers)} papers into {n_topics} multi-paper topics")
 
     def _fetch_full_texts(self, papers: list) -> None:
         """Two-stage pipeline: fetch full text only for the top ranked papers,
@@ -213,13 +274,16 @@ class Executor:
         timings["retrieve"] = round(time.monotonic() - t_retrieve, 1)
 
         reranked_papers = []
+        presented = []
         llm_requests = None
         if len(all_papers) > 0:
             t_rerank = time.monotonic()
             logger.info("Reranking papers...")
             reranked_papers = self.reranker.rerank(all_papers, corpus)
+            reranked_papers = self._apply_preferences(reranked_papers)
             timings["rerank"] = round(time.monotonic() - t_rerank, 1)
             presented = reranked_papers[:self.config.executor.max_paper_num]
+            self._assign_topics(presented)
 
             t_fulltext = time.monotonic()
             self._fetch_full_texts(presented)
@@ -263,6 +327,7 @@ class Executor:
                     "url": p.url,
                     "presented": i < self.config.executor.max_paper_num,
                     "has_full_text": bool(p.full_text),
+                    "topic": getattr(p, "topic", None),
                     "summary": (p.teaser or p.tldr or "")[:300],
                 }
                 for i, p in enumerate(reranked_papers)
@@ -278,4 +343,4 @@ class Executor:
         logger.info(f"Email sent successfully ({run_summary['counts']}, {timings})")
         # Only persist history after the email is delivered, so a failed run
         # does not silently swallow that day's papers.
-        self.record_history(all_papers)
+        self.record_history(presented, all_papers)
