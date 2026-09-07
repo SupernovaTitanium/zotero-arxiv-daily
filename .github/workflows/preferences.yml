@@ -2,7 +2,7 @@ name: Weekly preference review
 on:
   workflow_dispatch:
   schedule:
-    # Mondays 06:00 UTC ??infer boost/mute keywords from the past weeks of
+    # Mondays 06:00 UTC — infer boost/mute keywords from the past weeks of
     # implicit feedback (saved vs ignored recommendations) and commit
     # preferences.yaml.
     - cron: '0 6 * * 1'
@@ -54,10 +54,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-           if [ ! -f preferences.yaml ]; then
-             echo "No preferences.yaml produced this run (not enough evidence yet); nothing to commit"
-             exit 0
-           fi
+          if [ ! -f preferences.yaml ]; then
+          echo "No preferences.yaml produced this run (not enough evidence yet); nothing to commit"
+          exit 0
+          fi
           git add preferences.yaml
           if git diff --staged --quiet; then
             echo "No preference changes"
