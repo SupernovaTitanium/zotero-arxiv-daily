@@ -4,6 +4,7 @@ from arxiv import Result as ArxivResult
 from ..protocol import Paper
 from ..utils import extract_markdown_from_pdf, extract_tex_code_from_tar, normalize_doi, normalize_title
 from tempfile import TemporaryDirectory
+import functools
 import multiprocessing
 import os
 import re
@@ -114,7 +115,14 @@ class ArxivRetriever(BaseRetriever):
             raise ValueError("category must be specified for arxiv.")
 
     def _retrieve_raw_papers(self) -> list[ArxivResult]:
-        client = arxiv.Client(num_retries=10, delay_seconds=10)
+        # Fewer, larger pages: fewer requests means less exposure to arXiv's
+        # rate limiter, and long backoffs in the loop below matter more than
+        # many fast inner retries (which read as continued abuse).
+        client = arxiv.Client(num_retries=2, delay_seconds=10, page_size=500)
+        # arxiv 4.x issues its requests without a timeout; against a congested
+        # arXiv API a connection can hang for minutes. Bound it so hangs
+        # surface as retryable errors instead of stalling the run.
+        client._session.request = functools.partial(client._session.request, timeout=90)
         categories = list(self.config.source.arxiv.category)
         include_cross_list = self.config.source.arxiv.get("include_cross_list", False)
         lookback_days = int(self.config.executor.get("lookback_days", 1) or 1)
@@ -132,29 +140,47 @@ class ArxivRetriever(BaseRetriever):
         search = arxiv.Search(
             query=query, sort_by=arxiv.SortCriterion.SubmittedDate, max_results=None
         )
-        raw_papers = []
-        max_retries = 5
-        retry_delay = 30
-        for attempt in range(max_retries):
+        # GitHub Actions often starts this job 1-2h after the 22:00 UTC cron,
+        # landing it in arXiv's announcement window (~00:00 UTC) when the API
+        # throttles hard: requests 429, hang, or — worst — answer HTTP 200 with
+        # an empty feed, which arxiv 4.x turns into a silent, exception-free
+        # zero ("Got empty first page; stopping generation"). A multi-day
+        # window over several categories never legitimately returns zero, so
+        # treat every failure mode alike: retry with escalating backoff, and
+        # fail loudly if the window really can't be retrieved.
+        max_attempts = 5
+        last_error: str | None = None
+        for attempt in range(1, max_attempts + 1):
             try:
-                for result in client.results(search):
-                    if (
-                        not include_cross_list
-                        and result.primary_category not in categories
-                    ):
-                        continue
-                    raw_papers.append(result)
-                break
-            except arxiv.HTTPError as exc:
-                if exc.status == 429 and attempt < max_retries - 1:
-                    wait = retry_delay * (attempt + 1)
-                    logger.warning(f"arXiv API 429, retry {attempt + 1}/{max_retries} in {wait}s")
-                    sleep(wait)
-                else:
-                    raise
-        if self.config.executor.debug:
-            raw_papers = raw_papers[:10]
-        return raw_papers
+                raw_papers = [
+                    result
+                    for result in client.results(search)
+                    if include_cross_list or result.primary_category in categories
+                ]
+                last_error = None
+            except (arxiv.ArxivError, requests.exceptions.RequestException) as exc:
+                raw_papers = []
+                last_error = f"{type(exc).__name__}: {exc}"
+            if raw_papers:
+                if self.config.executor.debug:
+                    raw_papers = raw_papers[:10]
+                return raw_papers
+            if attempt < max_attempts:
+                wait = 60 * attempt
+                reason = last_error or "empty result while API is throttling"
+                logger.warning(
+                    f"arXiv retrieval failed (attempt {attempt}/{max_attempts}): {reason}; retrying in {wait}s"
+                )
+                sleep(wait)
+        if last_error:
+            raise RuntimeError(
+                f"arXiv retrieval failed after {max_attempts} attempts: {last_error}"
+            )
+        raise RuntimeError(
+            f"arXiv returned 0 papers after {max_attempts} attempts for a {lookback_days}-day "
+            f"window over {categories} — API throttling returned an empty feed, not an empty "
+            "window. Check https://status.arxiv.org."
+        )
 
     @staticmethod
     def _short_id(entry_id: str) -> str:
