@@ -7,8 +7,17 @@ on:
         required: false
         default: ''
         type: string
+      resend_run_id:
+        description: 'Workflow run ID whose email_*.html should be re-sent as-is (no pipeline, no state change).'
+        required: false
+        default: ''
+        type: string
   schedule:
     - cron: '0 22 * * *'
+
+permissions:
+  contents: read
+  actions: read
 
 # Never let a manual dispatch race the scheduled run: both write the same
 # state/cache files.
@@ -40,6 +49,7 @@ jobs:
           restore-keys: recommended-
 
       - name: Run script
+        if: inputs.resend_run_id == ''
         env:
           ZOTERO_ID: ${{ secrets.ZOTERO_ID }}
           ZOTERO_KEY: ${{ secrets.ZOTERO_KEY }}
@@ -67,8 +77,26 @@ jobs:
           sed -E 's/^([[:space:]]*[^#]*?(key|password|secret|token)[^:]*):.*/\1: ***MASKED***/I' config/custom.yaml
           uv run src/zotero_arxiv_daily/main.py
 
+      - name: Resend email from a previous run
+        if: inputs.resend_run_id != ''
+        env:
+          SENDER: ${{ secrets.SENDER }}
+          RECEIVER: ${{ secrets.RECEIVER }}
+          SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          EMAIL_SMTP_SERVER: ${{ vars.EMAIL_SMTP_SERVER }}
+          EMAIL_SMTP_PORT: ${{ vars.EMAIL_SMTP_PORT }}
+          CUSTOM_CONFIG: ${{ vars.CUSTOM_CONFIG }}
+          RESEND_RUN_ID: ${{ inputs.resend_run_id }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
+          uv run python scripts/apply_config_env_overrides.py config/custom.yaml
+          uv run python scripts/resend_email.py --run-id "$RESEND_RUN_ID"
+
       - name: Save recommendation state
-        if: always()
+        if: always() && inputs.resend_run_id == ''
         uses: actions/cache/save@v4
         with:
           path: |
