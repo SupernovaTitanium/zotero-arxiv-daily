@@ -1,6 +1,12 @@
 name: Send emails daily
 on:
   workflow_dispatch:
+    inputs:
+      lookback_days:
+        description: 'Override executor.lookback_days (e.g. 14 to backfill missed days). Empty = config value.'
+        required: false
+        default: ''
+        type: string
   schedule:
     - cron: '0 22 * * *'
 
@@ -47,8 +53,13 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
           CUSTOM_CONFIG: ${{ vars.CUSTOM_CONFIG }}
+          LOOKBACK_DAYS: ${{ inputs.lookback_days }}
         run: |
           printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
+          if [ -n "$LOOKBACK_DAYS" ]; then
+            sed -i "s/^\([[:space:]]*lookback_days:\).*/\1 $LOOKBACK_DAYS/" config/custom.yaml
+            echo "Backfill run: lookback_days overridden to $LOOKBACK_DAYS"
+          fi
           uv run python scripts/apply_config_env_overrides.py config/custom.yaml
           echo "Use custom config: "
           # Mask values of key/password/secret-like entries in case someone
