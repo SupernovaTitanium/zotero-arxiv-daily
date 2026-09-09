@@ -12,6 +12,16 @@ on:
         required: false
         default: ''
         type: string
+      fresh_state:
+        description: '"true" = delete the restored state/recommended.json before running, so dedup history starts empty. Use when a backfill already recorded the whole pool as seen.'
+        required: false
+        default: 'false'
+        type: string
+      max_paper_num:
+        description: 'Override executor.max_paper_num (e.g. 100 for a special edition). Empty = config value.'
+        required: false
+        default: ''
+        type: string
   schedule:
     - cron: '0 22 * * *'
 
@@ -64,11 +74,21 @@ jobs:
           OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
           CUSTOM_CONFIG: ${{ vars.CUSTOM_CONFIG }}
           LOOKBACK_DAYS: ${{ inputs.lookback_days }}
+          FRESH_STATE: ${{ inputs.fresh_state }}
+          MAX_PAPER_NUM: ${{ inputs.max_paper_num }}
         run: |
           printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
           if [ -n "$LOOKBACK_DAYS" ]; then
             sed -i "s/^\([[:space:]]*lookback_days:\).*/\1 $LOOKBACK_DAYS/" config/custom.yaml
             echo "Backfill run: lookback_days overridden to $LOOKBACK_DAYS"
+          fi
+          if [ -n "$MAX_PAPER_NUM" ]; then
+            sed -i "s/^\([[:space:]]*max_paper_num:\).*/\1 $MAX_PAPER_NUM/" config/custom.yaml
+            echo "Override: max_paper_num set to $MAX_PAPER_NUM"
+          fi
+          if [ "$FRESH_STATE" = "true" ]; then
+            rm -f state/recommended.json
+            echo "Fresh-state run: removed restored state/recommended.json; dedup history starts empty"
           fi
           uv run python scripts/apply_config_env_overrides.py config/custom.yaml
           echo "Use custom config: "
