@@ -32,9 +32,14 @@ def _fake_result(title: str, entry_id: str, primary_category: str, doi: str | No
 
 
 def _install_fake_client(monkeypatch, results, captured=None):
+    class FakeSession:
+        # matches the attribute the production code patches for request timeouts
+        def request(self, *args, **kwargs):
+            raise AssertionError("unexpected HTTP request in test")
+
     class FakeClient:
         def __init__(self, **kw):
-            pass
+            self._session = FakeSession()
         def results(self, search):
             if captured is not None:
                 captured["query"] = search.query
