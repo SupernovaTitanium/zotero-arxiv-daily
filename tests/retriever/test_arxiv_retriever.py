@@ -156,3 +156,83 @@ def test_fetch_full_text_prefers_tar_then_html_then_pdf(config, monkeypatch):
     monkeypatch.setattr(arxiv_retriever, "extract_text_from_html", lambda p: None)
     assert retriever.fetch_full_text(paper) == "pdf text"
     assert calls == ["tar", "html", "pdf"]
+
+
+def test_oai_category_codes():
+    assert arxiv_retriever._oai_category_codes(
+        ["cs:cs:LG", "physics:astro-ph:CO", "physics:quant-ph", "stat:stat:ML"]
+    ) == ["cs.LG", "astro-ph.CO", "quant-ph", "stat.ML"]
+
+
+def _oai_record_xml(arxiv_id, datestamp, set_specs, title, abstract, authors):
+    specs = "".join(f"<setSpec>{s}</setSpec>" for s in set_specs)
+    creators = "".join(f"<dc:creator>{a}</dc:creator>" for a in authors)
+    return (
+        f"<record><header><identifier>oai:arXiv.org:{arxiv_id}</identifier>"
+        f"<datestamp>{datestamp}</datestamp>{specs}</header>"
+        f"<metadata><oai_dc:dc xmlns:oai_dc=\"http://www.openarchives.org/OAI/2.0/oai_dc/\" "
+        f"xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:title>{title}</dc:title>"
+        f"{creators}<dc:description>{abstract}</dc:description></oai_dc:dc></metadata></record>"
+    )
+
+
+def _oai_page_xml(records_xml, token=None):
+    token_el = f"<resumptionToken>{token}</resumptionToken>" if token else "<resumptionToken/>"
+    return (
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+        "<OAI-PMH xmlns=\"http://www.openarchives.org/OAI/2.0/\">"
+        "<responseDate>2026-09-14T00:00:00Z</responseDate>"
+        "<request verb=\"ListRecords\">https://oaipmh.arxiv.org/oai</request>"
+        f"<ListRecords>{records_xml}{token_el}</ListRecords>"
+        "</OAI-PMH>"
+    )
+
+
+def _install_fake_oai(monkeypatch, pages):
+    calls = []
+
+    def _fake_get(url, params=None, timeout=None):
+        calls.append((url, dict(params or {})))
+        xml, token = pages[len(calls) - 1]
+        body = _oai_page_xml(xml, token)
+        return SimpleNamespace(status_code=200, text=body, raise_for_status=lambda: None)
+
+    monkeypatch.setattr(arxiv_retriever.requests, "get", _fake_get)
+    return calls
+
+
+def test_retriever_falls_back_to_oai_when_search_api_fails(config, monkeypatch):
+    _install_fake_client(monkeypatch, [])  # search API answers, but with 0 papers
+    monkeypatch.setattr(arxiv_retriever, "sleep", lambda seconds: None)
+    records = (
+        _oai_record_xml("2609.00001", "2026-09-13", ["cs:cs:AI", "cs:cs:LG"],
+                        "OAI  Paper", "OAI abstract", ["Alice", "Bob"])
+        # primary (first setSpec) not subscribed and include_cross_list=False -> excluded
+        + _oai_record_xml("2609.00002", "2026-09-13", ["cs:cs:LG", "cs:cs:AI"],
+                          "Cross-listed paper", "x", ["Carol"])
+        # no subscribed category at all -> excluded
+        + _oai_record_xml("2609.00003", "2026-09-13", ["physics:quant-ph"],
+                          "Unrelated", "y", ["Dave"])
+    )
+    _install_fake_oai(monkeypatch, [(records, None)])
+
+    papers = ArxivRetriever(config).retrieve_papers()
+
+    assert [p.title for p in papers] == ["OAI Paper"]
+    assert papers[0].source_id == "2609.00001"
+    assert papers[0].abstract == "OAI abstract"
+    assert papers[0].url == "https://arxiv.org/abs/2609.00001"
+    assert papers[0].pdf_url == "https://arxiv.org/pdf/2609.00001"
+    assert papers[0].authors == ["Alice", "Bob"]
+
+
+def test_retriever_raises_when_both_routes_fail(config, monkeypatch):
+    _install_fake_client(monkeypatch, [])
+    monkeypatch.setattr(arxiv_retriever, "sleep", lambda seconds: None)
+    empty = '<error code="noRecordsMatch">empty</error>'
+    _install_fake_oai(monkeypatch, [(empty, None)])
+
+    import pytest
+
+    with pytest.raises(RuntimeError, match="Both arXiv routes failed"):
+        ArxivRetriever(config).retrieve_papers()

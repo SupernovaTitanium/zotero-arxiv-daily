@@ -8,7 +8,8 @@ import functools
 import multiprocessing
 import os
 import re
-from datetime import datetime, timedelta, timezone
+import xml.etree.ElementTree as ET
+from datetime import date, datetime, timedelta, timezone
 from queue import Empty
 from time import sleep
 from typing import Any, Callable, TypeVar
@@ -20,6 +21,14 @@ T = TypeVar("T")
 DOWNLOAD_TIMEOUT = (10, 60)
 PDF_EXTRACT_TIMEOUT = 180
 TAR_EXTRACT_TIMEOUT = 180
+
+OAI_BASE_URL = "https://oaipmh.arxiv.org/oai"
+OAI_PAGE_DELAY_SECONDS = 3
+OAI_REQUEST_TIMEOUT = 90
+_OAI_NS = {
+    "oai": "http://www.openarchives.org/OAI/2.0/",
+    "dc": "http://purl.org/dc/elements/1.1/",
+}
 
 
 def _download_file(url: str, path: str) -> None:
@@ -107,6 +116,73 @@ def _extract_text_from_tar_worker(source_url: str, paper_id: str, paper_title: s
         return file_contents["all"]
 
 
+def _oai_category_codes(set_specs: list[str]) -> list[str]:
+    # OAI setSpec "group:archive:CATEGORY" -> arXiv category code:
+    # "cs:cs:LG" -> "cs.LG", "physics:astro-ph:CO" -> "astro-ph.CO";
+    # a two-part spec is a whole archive, "physics:quant-ph" -> "quant-ph".
+    codes = []
+    for spec in set_specs:
+        parts = spec.split(":")
+        if len(parts) == 3:
+            codes.append(f"{parts[1]}.{parts[2]}")
+        elif len(parts) == 2:
+            codes.append(parts[1])
+    return codes
+
+
+def _parse_oai_page(xml_text: str) -> tuple[list[dict[str, Any]], str | None]:
+    """Parse one ListRecords page into record dicts plus the next resumption
+    token (None when the list is exhausted or empty)."""
+    root = ET.fromstring(xml_text)
+    error = root.find("oai:error", _OAI_NS)
+    if error is not None:
+        code = error.attrib.get("code", "unknown")
+        if code == "noRecordsMatch":
+            return [], None
+        raise RuntimeError(f"OAI-PMH error {code}: {(error.text or '').strip()}")
+    records = []
+    for record in root.findall(".//oai:record", _OAI_NS):
+        identifier = record.findtext("oai:header/oai:identifier", "", _OAI_NS) or ""
+        records.append(
+            {
+                "id": identifier.rsplit("oai:arXiv.org:", 1)[-1],
+                "datestamp": record.findtext("oai:header/oai:datestamp", "", _OAI_NS) or "",
+                "set_specs": [el.text or "" for el in record.findall("oai:header/oai:setSpec", _OAI_NS)],
+                "title": record.findtext(".//dc:title", "", _OAI_NS) or "",
+                "abstract": record.findtext(".//dc:description", "", _OAI_NS) or "",
+                "authors": [el.text or "" for el in record.findall(".//dc:creator", _OAI_NS)],
+            }
+        )
+    token_el = root.find(".//oai:resumptionToken", _OAI_NS)
+    token = (token_el.text or "").strip() if token_el is not None else ""
+    return records, (token or None)
+
+
+def _build_arxiv_result(record: dict[str, Any]) -> ArxivResult:
+    arxiv_id = record["id"]
+    codes = _oai_category_codes(record["set_specs"])
+    datestamp = datetime.strptime(record["datestamp"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    # OAI headers don't mark the primary category; setSpec order is treated as
+    # primary-first. With include_cross_list=False this can over-include papers
+    # whose primary differs from the first listed category — acceptable for a
+    # fallback route, and dedup/ranking still gate what gets emailed.
+    return ArxivResult(
+        entry_id=f"https://arxiv.org/abs/{arxiv_id}",
+        updated=datestamp,
+        published=datestamp,
+        title=" ".join(record["title"].split()),
+        authors=[ArxivResult.Author(name) for name in record["authors"]],
+        summary=" ".join(record["abstract"].split()),
+        primary_category=codes[0] if codes else "",
+        categories=codes,
+        links=[
+            ArxivResult.Link(
+                href=f"https://arxiv.org/pdf/{arxiv_id}", title="pdf", content_type="application/pdf"
+            )
+        ],
+    )
+
+
 @register_retriever("arxiv")
 class ArxivRetriever(BaseRetriever):
     def __init__(self, config):
@@ -115,14 +191,6 @@ class ArxivRetriever(BaseRetriever):
             raise ValueError("category must be specified for arxiv.")
 
     def _retrieve_raw_papers(self) -> list[ArxivResult]:
-        # Fewer, larger pages: fewer requests means less exposure to arXiv's
-        # rate limiter, and long backoffs in the loop below matter more than
-        # many fast inner retries (which read as continued abuse).
-        client = arxiv.Client(num_retries=2, delay_seconds=10, page_size=500)
-        # arxiv 4.x issues its requests without a timeout; against a congested
-        # arXiv API a connection can hang for minutes. Bound it so hangs
-        # surface as retryable errors instead of stalling the run.
-        client._session.request = functools.partial(client._session.request, timeout=90)
         categories = list(self.config.source.arxiv.category)
         include_cross_list = self.config.source.arxiv.get("include_cross_list", False)
         lookback_days = int(self.config.executor.get("lookback_days", 1) or 1)
@@ -133,6 +201,46 @@ class ArxivRetriever(BaseRetriever):
         # submittedDate is a timestamp (not a calendar date), so the window is
         # the last N*24h: lookback_days=1 covers the previous 24 hours.
         start = now - timedelta(days=lookback_days)
+        try:
+            papers = self._papers_from_search_api(categories, include_cross_list, lookback_days, start, now)
+        except RuntimeError as search_error:
+            # The search API and the OAI-PMH interface are separate arXiv
+            # services; since 2026-09-10 the search API hard-throttles GitHub
+            # runner IPs for hours while OAI-PMH keeps answering. Harvesting
+            # by OAI datestamp also catches papers updated (new version) in
+            # the window, not only first submissions — acceptable drift for
+            # a fallback, dedup still applies.
+            logger.warning(
+                f"Search API gave up ({search_error}); falling back to OAI-PMH harvest "
+                f"for {start:%Y-%m-%d}..{now:%Y-%m-%d}"
+            )
+            papers = self._papers_from_oai(categories, include_cross_list, start.date(), now.date())
+            if not papers:
+                raise RuntimeError(
+                    f"Both arXiv routes failed. Search API: {search_error} | OAI-PMH returned "
+                    f"0 usable records for {start:%Y-%m-%d}..{now:%Y-%m-%d}"
+                ) from search_error
+            logger.info(f"OAI-PMH fallback retrieved {len(papers)} papers")
+        if self.config.executor.debug:
+            papers = papers[:10]
+        return papers
+
+    def _papers_from_search_api(
+        self,
+        categories: list[str],
+        include_cross_list: bool,
+        lookback_days: int,
+        start: datetime,
+        now: datetime,
+    ) -> list[ArxivResult]:
+        # Fewer, larger pages: fewer requests means less exposure to arXiv's
+        # rate limiter, and long backoffs in the loop below matter more than
+        # many fast inner retries (which read as continued abuse).
+        client = arxiv.Client(num_retries=2, delay_seconds=10, page_size=500)
+        # arxiv 4.x issues its requests without a timeout; against a congested
+        # arXiv API a connection can hang for minutes. Bound it so hangs
+        # surface as retryable errors instead of stalling the run.
+        client._session.request = functools.partial(client._session.request, timeout=90)
         query = (
             f"({' OR '.join('cat:' + c for c in categories)})"
             f" AND submittedDate:[{start:%Y%m%d%H%M} TO {now:%Y%m%d%H%M}]"
@@ -162,8 +270,6 @@ class ArxivRetriever(BaseRetriever):
                 raw_papers = []
                 last_error = f"{type(exc).__name__}: {exc}"
             if raw_papers:
-                if self.config.executor.debug:
-                    raw_papers = raw_papers[:10]
                 return raw_papers
             if attempt < max_attempts:
                 wait = 60 * attempt
@@ -181,6 +287,57 @@ class ArxivRetriever(BaseRetriever):
             f"window over {categories} — API throttling returned an empty feed, not an empty "
             "window. Check https://status.arxiv.org."
         )
+
+    def _papers_from_oai(
+        self,
+        categories: list[str],
+        include_cross_list: bool,
+        from_day: date,
+        until_day: date,
+    ) -> list[ArxivResult]:
+        params: dict[str, str] = {
+            "verb": "ListRecords",
+            "metadataPrefix": "oai_dc",
+            "from": from_day.isoformat(),
+            "until": until_day.isoformat(),
+        }
+        papers: list[ArxivResult] = []
+        max_page_attempts = 3
+        while True:
+            xml_text: str | None = None
+            last_error: str | None = None
+            for attempt in range(1, max_page_attempts + 1):
+                try:
+                    response = requests.get(OAI_BASE_URL, params=params, timeout=OAI_REQUEST_TIMEOUT)
+                    response.raise_for_status()
+                    xml_text = response.text
+                    break
+                except requests.exceptions.RequestException as exc:
+                    last_error = f"{type(exc).__name__}: {exc}"
+                    if attempt < max_page_attempts:
+                        wait = 30 * attempt
+                        logger.warning(
+                            f"OAI-PMH page request failed (attempt {attempt}/{max_page_attempts}): "
+                            f"{last_error}; retrying in {wait}s"
+                        )
+                        sleep(wait)
+            if xml_text is None:
+                raise RuntimeError(
+                    f"OAI-PMH page request failed after {max_page_attempts} attempts: {last_error}"
+                )
+            records, token = _parse_oai_page(xml_text)
+            for record in records:
+                codes = _oai_category_codes(record["set_specs"])
+                if not any(code in categories for code in codes):
+                    continue
+                # setSpec order is treated as primary-first (see _build_arxiv_result).
+                if not include_cross_list and (not codes or codes[0] not in categories):
+                    continue
+                papers.append(_build_arxiv_result(record))
+            if token is None:
+                return papers
+            params = {"verb": "ListRecords", "resumptionToken": token}
+            sleep(OAI_PAGE_DELAY_SECONDS)
 
     @staticmethod
     def _short_id(entry_id: str) -> str:
