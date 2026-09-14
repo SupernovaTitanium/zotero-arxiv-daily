@@ -22,8 +22,18 @@ on:
         required: false
         default: ''
         type: string
+      retry_count:
+        description: 'Internal: how many automatic retries already ran for this logical run. Set automatically by retry-dispatch; do not set by hand.'
+        required: false
+        default: ''
+        type: string
   schedule:
-    - cron: '0 22 * * *'
+    # 21:43 UTC ≈ 05:43 next morning in Taiwan. Deliberately BEFORE the daily
+    # announcement (20:00 ET = 00:00 UTC): submissions for that announcement are
+    # already queryable by ~19:00 UTC, and GitHub's scheduler delay used to push
+    # the 22:00 cron into 00:00 UTC, where the global stampede of arxiv-daily
+    # jobs gets shared runner IPs rate-limited (HTTP 429) by arXiv for hours.
+    - cron: '43 21 * * *'
 
 permissions:
   contents: read
@@ -132,3 +142,41 @@ jobs:
           name: run-outputs-${{ github.run_id }}
           path: output/
           if-no-files-found: ignore
+
+  # arXiv 429s shared GitHub runner IPs hard around the 00:00 UTC announcement
+  # window; if the daily run fails on that, waiting out the storm and starting a
+  # fresh run is more reliable than longer sleeps inside one job. Dispatches
+  # carry the original inputs plus an incremented retry_count; the guard below
+  # caps the loop at two retries. GITHUB_TOKEN-triggered workflow_dispatch does
+  # start a new run (documented exception to the recursion guard).
+  retry-dispatch:
+    needs: calculate-and-send
+    if: failure() && fromJSON(inputs.retry_count || '0') < 2
+    permissions:
+      actions: write
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      REF: ${{ github.ref_name }}
+      LOOKBACK_DAYS: ${{ inputs.lookback_days }}
+      RESEND_RUN_ID: ${{ inputs.resend_run_id }}
+      FRESH_STATE: ${{ inputs.fresh_state }}
+      MAX_PAPER_NUM: ${{ inputs.max_paper_num }}
+      RETRY_COUNT: ${{ inputs.retry_count }}
+    steps:
+      - name: Wait out the rate-limit window, then dispatch a fresh run
+        run: |
+          NEXT=$(( ${RETRY_COUNT:-0} + 1 ))
+          echo "Run failed (retry_count=${RETRY_COUNT:-0}). Most common cause: arXiv API HTTP 429."
+          echo "Waiting 2h before dispatching a fresh run with retry_count=$NEXT..."
+          sleep 7200
+          jq -n --arg ref "$REF" --arg lb "$LOOKBACK_DAYS" --arg rs "$RESEND_RUN_ID" \
+                --arg fs "$FRESH_STATE" --arg mp "$MAX_PAPER_NUM" --arg rc "$NEXT" \
+            '{ref: $ref, inputs: {lookback_days: $lb, resend_run_id: $rs, fresh_state: $fs, max_paper_num: $mp, retry_count: $rc}}' > payload.json
+          curl -sf -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/actions/workflows/main.yml/dispatches" \
+            -d @payload.json
+          echo "Dispatched fresh run with retry_count=$NEXT"
