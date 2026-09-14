@@ -143,15 +143,17 @@ jobs:
           path: output/
           if-no-files-found: ignore
 
-  # arXiv 429s shared GitHub runner IPs hard around the 00:00 UTC announcement
-  # window; if the daily run fails on that, waiting out the storm and starting a
-  # fresh run is more reliable than longer sleeps inside one job. Dispatches
-  # carry the original inputs plus an incremented retry_count; the guard below
-  # caps the loop at two retries. GITHUB_TOKEN-triggered workflow_dispatch does
-  # start a new run (documented exception to the recursion guard).
+  # arXiv has been hard-429ing shared GitHub runner IPs for hours at a time
+  # (since ~2026-09-10, at any hour — upstream forks silently return green
+  # "No arxiv papers" runs through the same window). If the daily run fails,
+  # waiting out the block and starting a fresh run is more reliable than longer
+  # sleeps inside one job. Dispatches carry the original inputs plus an
+  # incremented retry_count; the guard caps the loop at four retries (~10h of
+  # coverage). GITHUB_TOKEN-triggered workflow_dispatch does start a new run
+  # (documented exception to the recursion guard).
   retry-dispatch:
     needs: calculate-and-send
-    if: failure() && fromJSON(inputs.retry_count || '0') < 2
+    if: failure() && fromJSON(inputs.retry_count || '0') < 4
     permissions:
       actions: write
     runs-on: ubuntu-latest
