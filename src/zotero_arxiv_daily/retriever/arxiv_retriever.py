@@ -310,7 +310,10 @@ class ArxivRetriever(BaseRetriever):
                 try:
                     response = requests.get(OAI_BASE_URL, params=params, timeout=OAI_REQUEST_TIMEOUT)
                     response.raise_for_status()
-                    xml_text = response.text
+                    # arXiv serves text/xml without a charset, so requests guesses
+                    # ISO-8859-1 and mojibakes non-ASCII author names; the OAI
+                    # payload is UTF-8 per its XML declaration.
+                    xml_text = response.content.decode("utf-8")
                     break
                 except requests.exceptions.RequestException as exc:
                     last_error = f"{type(exc).__name__}: {exc}"

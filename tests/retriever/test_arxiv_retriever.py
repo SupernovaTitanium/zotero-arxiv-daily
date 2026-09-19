@@ -195,7 +195,15 @@ def _install_fake_oai(monkeypatch, pages):
         calls.append((url, dict(params or {})))
         xml, token = pages[len(calls) - 1]
         body = _oai_page_xml(xml, token)
-        return SimpleNamespace(status_code=200, text=body, raise_for_status=lambda: None)
+        # Mirror the real client: arXiv serves text/xml with no charset, so
+        # .text misdecodes the UTF-8 body as ISO-8859-1 while .content keeps
+        # the raw bytes.
+        return SimpleNamespace(
+            status_code=200,
+            content=body.encode("utf-8"),
+            text=body.encode("utf-8").decode("iso-8859-1"),
+            raise_for_status=lambda: None,
+        )
 
     monkeypatch.setattr(arxiv_retriever.requests, "get", _fake_get)
     return calls
@@ -206,7 +214,7 @@ def test_retriever_falls_back_to_oai_when_search_api_fails(config, monkeypatch):
     monkeypatch.setattr(arxiv_retriever, "sleep", lambda seconds: None)
     records = (
         _oai_record_xml("2609.00001", "2026-09-13", ["cs:cs:AI", "cs:cs:LG"],
-                        "OAI  Paper", "OAI abstract", ["Alice", "Bob"])
+                        "OAI  Paper", "OAI abstract", ["Alice", "Müller"])
         # primary (first setSpec) not subscribed and include_cross_list=False -> excluded
         + _oai_record_xml("2609.00002", "2026-09-13", ["cs:cs:LG", "cs:cs:AI"],
                           "Cross-listed paper", "x", ["Carol"])
@@ -223,7 +231,7 @@ def test_retriever_falls_back_to_oai_when_search_api_fails(config, monkeypatch):
     assert papers[0].abstract == "OAI abstract"
     assert papers[0].url == "https://arxiv.org/abs/2609.00001"
     assert papers[0].pdf_url == "https://arxiv.org/pdf/2609.00001"
-    assert papers[0].authors == ["Alice", "Bob"]
+    assert papers[0].authors == ["Alice", "Müller"]
 
 
 def test_retriever_raises_when_both_routes_fail(config, monkeypatch):
