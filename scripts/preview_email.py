@@ -1,9 +1,9 @@
 """Render a preview email without Zotero, network full-text fetches, or SMTP.
 
 - Zotero corpus is faked in-process.
-- arXiv retrieval is real (metadata only; fulltext_paper_num=0).
-- The reranker and LLM are stubbed (deterministic embeddings; canned
-  Traditional-Chinese teasers), so no API key is needed.
+- arXiv retrieval is real (metadata only).
+- Embeddings are stubbed with deterministic hash vectors; the LLM is stubbed
+  with canned Traditional-Chinese teasers, so no API key is needed.
 
 Usage: uv run python scripts/preview_email.py [--max-papers 10]
 Writes output/email_YYYY-MM-DD.html + run_summary JSON and prints the path.
@@ -14,178 +14,96 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from types import SimpleNamespace
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from hydra import compose, initialize_config_dir  # noqa: E402
-from hydra.core.global_hydra import GlobalHydra  # noqa: E402
+import zotero_arxiv_daily.teaser as teaser_module  # noqa: E402
 from loguru import logger  # noqa: E402
-from omegaconf import OmegaConf  # noqa: E402
 
-import zotero_arxiv_daily.executor as executor_module  # noqa: E402
+# Dummy credentials so load_config passes; nothing external is contacted with
+# them (the LLM client is stubbed below and no email is sent).
+os.environ.setdefault("ZOTERO_ID", "0")
+os.environ.setdefault("ZOTERO_KEY", "preview")
+os.environ.setdefault("SENDER", "preview@example.com")
+os.environ.setdefault("RECEIVER", "preview@example.com")
+os.environ.setdefault("SENDER_PASSWORD", "preview")
+os.environ.setdefault("OPENAI_API_KEY", "sk-preview")
+os.environ.setdefault("OPENAI_API_BASE", "https://localhost/v1")
+os.environ.setdefault("EMAIL_SMTP_SERVER", "localhost")
+os.environ.setdefault("EMAIL_SMTP_PORT", "465")
 
-# ---------------------------------------------------------------------------
-# Fake Zotero corpus
-# ---------------------------------------------------------------------------
+from zotero_arxiv_daily import arxiv  # noqa: E402
+from zotero_arxiv_daily.config import load_config  # noqa: E402
+from zotero_arxiv_daily.email import render_email  # noqa: E402
+from zotero_arxiv_daily.embed import Ranker  # noqa: E402
+from zotero_arxiv_daily.paper import CorpusPaper  # noqa: E402
+from zotero_arxiv_daily.teaser import generate_teasers_batch  # noqa: E402
 
-_FAKE_COLLECTIONS = [
-    {"key": "C1", "data": {"name": "2026", "parentCollection": False}},
-    {"key": "C2", "data": {"name": "survey", "parentCollection": "C1"}},
-]
 
-_FAKE_ITEMS = [
-    {
-        "data": {
-            "title": t,
-            "abstractNote": a,
-            "dateAdded": f"2026-0{m}-{d:02d}T10:00:00Z",
-            "collections": ["C2"],
-        }
-    }
-    for t, a, m, d in [
+class FakeEmbedder:
+    """Deterministic bag-of-token-hash embeddings; no model download."""
+
+    def model_cache_key(self) -> str:
+        return "preview|fake"
+
+    def embed(self, texts: list[str]):
+        vectors = []
+        for text in texts:
+            vec = [0.0] * 64
+            for token in text.lower().split():
+                digest = hashlib.sha256(token.encode()).digest()
+                vec[digest[0] % 64] += 1.0
+                vec[digest[1] % 64] += 0.5
+            vectors.append(vec)
+        return vectors
+
+
+def _fake_corpus() -> list[CorpusPaper]:
+    base = date.today() - timedelta(days=30)
+    papers = [
         (
             "Vision-Language Models for Robotic Manipulation: A Survey",
-            "We survey vision-language-action models that map visual observations and natural-language instructions to robot actions, covering architectures, training data, and evaluation benchmarks.",
-            6, 2,
+            "We survey vision-language-action models that map visual observations and "
+            "natural-language instructions to robot actions, covering architectures, "
+            "training data, and evaluation benchmarks.",
         ),
         (
             "Diffusion Models for Text-to-Image Generation: A Survey",
-            "This survey reviews denoising diffusion models for text-to-image synthesis, including classifier-free guidance, latent diffusion, and alignment techniques.",
-            7, 5,
+            "This survey reviews denoising diffusion models for text-to-image synthesis, "
+            "including classifier-free guidance, latent diffusion, and alignment techniques.",
         ),
         (
-            "Retrieval-Augmented Generation for Knowledge-Intensive NLP",
-            "We study retrieval-augmented generation, which combines a dense retriever with a seq2seq generator to ground LLM outputs in external knowledge and reduce hallucination.",
-            8, 1,
-        ),
-        (
-            "Parameter-Efficient Fine-Tuning of Large Language Models",
-            "We review parameter-efficient fine-tuning methods such as LoRA, adapters, and prompt tuning that update a tiny fraction of parameters while matching full fine-tuning quality.",
-            8, 8,
-        ),
-        (
-            "Self-Supervised Learning on Graphs: A Survey",
-            "This survey covers contrastive, generative, and masked self-supervised objectives for graph representation learning across molecules, social networks, and knowledge graphs.",
-            8, 15,
-        ),
-        (
-            "Multimodal Chain-of-Thought Reasoning in LLMs",
-            "We propose multimodal chain-of-thought prompting that interleaves images and text rationales, improving visual question answering and embodied planning.",
-            8, 22,
-        ),
-        (
-            "Efficient Inference for Large Language Models: A Survey",
-            "We survey inference efficiency techniques for LLMs: KV-cache compression, speculative decoding, quantization, and batching strategies.",
-            8, 28,
-        ),
-        (
-            "Reinforcement Learning from Human Feedback: Foundations",
-            "We formalize RLHF as a two-stage pipeline of reward modeling and policy optimization, analyzing reward hacking and KL regularization.",
-            9, 1,
+            "Scaling Laws for Sparse Mixture-of-Experts Language Models",
+            "We study scaling laws for sparse mixture-of-experts transformers and show "
+            "routing regularization improves token balance and downstream accuracy.",
         ),
     ]
-]
-
-
-def _install_fake_zotero() -> None:
-    stub = SimpleNamespace(
-        everything=lambda gen: gen,
-        collections=lambda: _FAKE_COLLECTIONS,
-        items=lambda **kw: _FAKE_ITEMS,
-    )
-    executor_module.zotero = SimpleNamespace(Zotero=lambda *a, **kw: stub)
-    executor_module.send_email = lambda config, html: logger.info("SMTP skipped (preview mode)")
-
-
-# ---------------------------------------------------------------------------
-# Stub LLM client: JSON-batch teasers + deterministic hash embeddings
-# ---------------------------------------------------------------------------
-
-def _stub_create(**kwargs):
-    messages = kwargs.get("messages", [])
-    text = str(messages)
-    if "輸出 JSON 陣列" in text or "输出 JSON" in text:
-        import re
-        indexes = sorted({int(m) for m in re.findall(r"\[(\d+)\]", text)})
-        payload = [
-            {"index": i, "teaser": f"這是第 {i} 篇論文的測試速覽：提出一個新方法解決既有基準上的痛點，並展示顯著提升。"}
-            for i in indexes
-        ]
-        content = json.dumps(payload, ensure_ascii=False)
-    else:
-        content = "單篇測試速覽：提出新方法解決既有基準的痛點，成效顯著且值得關注。"
-    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
-
-
-def _hash_vector(text: str, dim: int = 16):
-    digest = hashlib.sha256(text.encode("utf-8")).digest()
-    vals = [b / 255.0 - 0.5 for b in digest[:dim]]
-    return vals
-
-
-def _install_stub_openai() -> None:
-    stub = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=_stub_create)),
-        embeddings=SimpleNamespace(
-            create=lambda **kw: SimpleNamespace(
-                data=[
-                    SimpleNamespace(embedding=_hash_vector(str(t)), index=i, object="embedding")
-                    for i, t in enumerate(kw.get("input", []))
-                ],
-                model=kw.get("model", "stub"),
-                object="list",
-            )
-        ),
-    )
-    executor_module.OpenAI = lambda **kw: stub
-    import zotero_arxiv_daily.reranker.api as api_module
-    api_module.OpenAI = lambda **kw: stub
-
-
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
-
-def _load_config(max_papers: int):
-    GlobalHydra.instance().clear()
-    with initialize_config_dir(config_dir=str(REPO_ROOT / "config"), version_base=None):
-        return compose(
-            config_name="default",
-            overrides=[
-                "zotero.user_id=0",
-                "zotero.api_key=fake",
-                "zotero.include_path=null",
-                "zotero.ignore_path=null",
-                "email.sender=preview@example.com",
-                "email.receiver=preview@example.com",
-                "email.smtp_server=localhost",
-                "email.smtp_port=1025",
-                "email.sender_password=fake",
-                "llm.api.key=sk-fake",
-                "llm.api.base_url=http://localhost:9/v1",
-                "llm.generation_kwargs.model=preview-model",
-                "llm.requests_per_minute=0",
-                "llm.language=Traditional Chinese",
-                "llm.summary.mode=teaser",
-                "llm.summary.teaser_char_limit=150",
-                "llm.summary.batch_size=5",
-                "source.arxiv.category=[cs.AI,cs.CV,cs.LG,cs.CL]",
-                "executor.source=[arxiv]",
-                "executor.reranker=api",
-                "executor.debug=false",
-                "executor.send_empty=true",
-                "executor.lookback_days=1",
-                "executor.state_file=null",
-                "executor.output_dir=output",
-                f"executor.max_paper_num={max_papers}",
-                "executor.fulltext_paper_num=0",
-                "executor.topic_threshold=0.1",  # stub hash vectors are near-orthogonal
-            ],
+    return [
+        CorpusPaper(
+            title=title,
+            abstract=abstract,
+            added_date=datetime(*(base - timedelta(days=7 * i)).timetuple()[:3]),
+            paths=["2026/survey"] if i < 2 else ["2026/reading-group"],
         )
+        for i, (title, abstract) in enumerate(papers)
+    ]
+
+
+def _stub_chat(client, llm, system: str, prompt: str) -> str:
+    """Return a canned teaser: a JSON array for batch prompts, plain text otherwise."""
+    if "輸出 JSON 陣列" in prompt:
+        count = prompt.count("\n[")
+        items = [
+            {"index": i, "teaser": f"預覽速覽 {i + 1}：這是測試用的固定摘要文字。"}
+            for i in range(count)
+        ]
+        return json.dumps(items, ensure_ascii=False)
+    return "預覽速覽：這是測試用的固定摘要文字。"
 
 
 def main() -> None:
@@ -193,31 +111,55 @@ def main() -> None:
     parser.add_argument("--max-papers", type=int, default=10)
     args = parser.parse_args()
 
-    _install_fake_zotero()
-    _install_stub_openai()
+    config = load_config(REPO_ROOT / "config")
+    config.executor.max_paper_num = args.max_papers
+    config.executor.fulltext_paper_num = 0
+    config.executor.output_dir = str(REPO_ROOT / "output")
+    config.executor.preferences_file = None
 
-    config = _load_config(args.max_papers)
-    OmegaConf.resolve(config)
-    # null fields in base.yaml cannot be overridden from the CLI
-    config.reranker.api.key = "sk-fake"
-    config.reranker.api.base_url = "http://localhost:9/v1"
-    config.reranker.api.model = "preview-embedding"
+    corpus = _fake_corpus()
+    seen_keys: set[str] = set()
+    for c in corpus:
+        seen_keys.update(c.dedup_keys())
 
-    executor = executor_module.Executor(config)
-    executor.run()
+    logger.info("Retrieving arXiv papers (real, metadata only)...")
+    papers = arxiv.retrieve_papers(config, seen_keys)
+    if not papers:
+        raise SystemExit("No arXiv papers retrieved; check the category list / network")
 
-    email_path = Path("output") / f"email_{__import__('datetime').date.today().isoformat()}.html"
-    summary_path = Path("output") / f"run_summary_{__import__('datetime').date.today().isoformat()}.json"
-    print("\n" + "=" * 60)
-    print(f"Email HTML : {email_path.resolve()}")
-    print(f"Run summary: {summary_path.resolve()}")
-    if summary_path.exists():
-        summary = json.loads(summary_path.read_text(encoding="utf-8"))
-        print(f"Counts     : {summary['counts']}")
-        print(f"LLM reqs   : {summary['llm_requests']}")
-        print(f"Timings    : {summary['timings_seconds']}")
-        for p in summary["papers"][:5]:
-            print(f"  #{p['rank']} [{p['score']}] {p['title'][:60]}")
+    ranker = Ranker(config, FakeEmbedder())  # type: ignore[arg-type]
+    papers = ranker.rank(papers, corpus)[: args.max_papers]
+    ranker.assign_topics(papers)
+
+    original_chat = teaser_module._chat
+    teaser_module._chat = _stub_chat
+    try:
+        llm_requests = generate_teasers_batch(object(), config.llm, papers)
+    finally:
+        teaser_module._chat = original_chat
+
+    email_html = render_email(papers, config.llm.teaser_char_limit)
+    out_dir = Path(config.executor.output_dir)
+    out_dir.mkdir(exist_ok=True)
+    html_path = out_dir / f"email_{date.today().isoformat()}.html"
+    html_path.write_text(email_html, encoding="utf-8")
+    (out_dir / f"run_summary_{date.today().isoformat()}.json").write_text(
+        json.dumps(
+            {
+                "date": date.today().isoformat(),
+                "mode": "preview",
+                "llm_requests": llm_requests,
+                "papers": [
+                    {"rank": i + 1, "title": p.title, "score": round(p.score or 0, 3), "topic": p.topic}
+                    for i, p in enumerate(papers)
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    print(f"Preview email written to {html_path}")
 
 
 if __name__ == "__main__":

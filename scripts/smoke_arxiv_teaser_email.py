@@ -1,54 +1,40 @@
 """Smoke-test arXiv retrieval, teaser generation, and email delivery.
 
-This intentionally does not use the daily RSS feed. The daily production
-workflow should stay quiet when there are no new papers, while this workflow
-needs deterministic signal when run manually.
+Fetches the newest arXiv papers by category (not the daily lookback window,
+which should stay quiet when there are genuinely no new papers), generates
+teasers, and sends one email. Run:
+    uv run python scripts/smoke_arxiv_teaser_email.py --max-papers 3
 """
 
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 import arxiv
-from hydra import compose, initialize_config_dir
-from hydra.core.global_hydra import GlobalHydra
 from loguru import logger
-from omegaconf import DictConfig, OmegaConf
-from openai import OpenAI
 
-from zotero_arxiv_daily.construct_email import render_email
-from zotero_arxiv_daily.executor import rate_limit_chat_client
-from zotero_arxiv_daily.personal_summary import generate_teaser
-from zotero_arxiv_daily.protocol import Paper
-from zotero_arxiv_daily.mailer import send_email
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
-
-def _load_config() -> DictConfig:
-    repo_root = Path(__file__).resolve().parent.parent
-    config_dir = repo_root / "config"
-    GlobalHydra.instance().clear()
-    with initialize_config_dir(config_dir=str(config_dir), version_base=None):
-        return compose(config_name="default")
+from zotero_arxiv_daily.config import load_config  # noqa: E402
+from zotero_arxiv_daily.email import render_email  # noqa: E402
+from zotero_arxiv_daily.mailer import send_email  # noqa: E402
+from zotero_arxiv_daily.paper import Paper  # noqa: E402
+from zotero_arxiv_daily.teaser import generate_teaser, make_llm_client  # noqa: E402
 
 
-def _category_query(categories: list[str]) -> str:
-    if not categories:
-        raise ValueError("source.arxiv.category must contain at least one category")
-    return " OR ".join(f"cat:{category}" for category in categories)
-
-
-def _fetch_recent_arxiv_papers(config: DictConfig, max_papers: int) -> list[Paper]:
-    query = _category_query(list(config.source.arxiv.category))
+def run(max_papers: int) -> None:
+    config = load_config(REPO_ROOT / "config")
+    query = " OR ".join(f"cat:{c}" for c in config.executor.categories)
     logger.info(f"Fetching {max_papers} recent arXiv papers with query: {query}")
     client = arxiv.Client(num_retries=3, delay_seconds=5)
     search = arxiv.Search(
-        query=query,
-        max_results=max_papers,
-        sort_by=arxiv.SortCriterion.SubmittedDate,
+        query=query, max_results=max_papers, sort_by=arxiv.SortCriterion.SubmittedDate
     )
 
-    papers = []
+    papers: list[Paper] = []
     for index, result in enumerate(client.results(search), start=1):
         papers.append(
             Paper(
@@ -58,42 +44,28 @@ def _fetch_recent_arxiv_papers(config: DictConfig, max_papers: int) -> list[Pape
                 abstract=result.summary,
                 url=result.entry_id,
                 pdf_url=result.pdf_url,
-                full_text=None,
                 score=float(max_papers - index + 1),
             )
         )
-    return papers
-
-
-def run(max_papers: int) -> None:
-    config = _load_config()
-    OmegaConf.resolve(config)
-
-    papers = _fetch_recent_arxiv_papers(config, max_papers)
     if not papers:
         raise RuntimeError("Smoke test found no arXiv papers")
 
-    openai_client = rate_limit_chat_client(
-        OpenAI(api_key=config.llm.api.key, base_url=config.llm.api.base_url),
-        config.llm.get("requests_per_minute", 10),
-    )
+    llm_client = make_llm_client(config.llm)
     for paper in papers:
         logger.info(f"Generating teaser: {paper.title}")
-        teaser = generate_teaser(openai_client, config.llm, paper.title, paper.abstract, paper.full_text)
+        teaser = generate_teaser(llm_client, config.llm, paper.title, paper.abstract, None)
         if not teaser:
             raise RuntimeError(f"Failed to generate teaser for {paper.url}")
         paper.teaser = teaser
-        paper.tldr = teaser
 
     logger.info("Rendering and sending smoke-test email")
-    email_content = render_email(papers, config.llm.summary)
-    send_email(config, email_content)
+    send_email(config.email, render_email(papers, config.llm.teaser_char_limit))
 
     logger.info(f"Smoke email sent with {len(papers)} papers")
     for index, paper in enumerate(papers, start=1):
         print(f"[{index}] {paper.title}")
         print(f"    URL: {paper.url}")
-        print(f"    Teaser: {paper.tldr}")
+        print(f"    Teaser: {paper.teaser}")
 
 
 def main() -> None:

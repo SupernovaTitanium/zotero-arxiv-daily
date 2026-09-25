@@ -75,94 +75,67 @@ Then you should also set a public variable `CUSTOM_CONFIG` for your custom confi
 Paste the following content into the value of `CUSTOM_CONFIG` variable:
 ```yaml
 zotero:
-  user_id: ${oc.env:ZOTERO_ID}
-  api_key: ${oc.env:ZOTERO_KEY}
+  user_id: ${ZOTERO_ID}
+  api_key: ${ZOTERO_KEY}
   include_path: null # Or e.g. ["2026/survey/**", "2026/reading-group/**"]
 
 email:
-  sender: ${oc.env:SENDER}
-  receiver: ${oc.env:RECEIVER}
-  smtp_server: smtp.qq.com
+  sender: ${SENDER}
+  receiver: ${RECEIVER}
+  smtp_server: smtp.gmail.com
   smtp_port: 465
-  sender_password: ${oc.env:SENDER_PASSWORD}
+  sender_password: ${SENDER_PASSWORD}
 
 llm:
-  api:
-    key: ${oc.env:OPENAI_API_KEY}
-    base_url: ${oc.env:OPENAI_API_BASE}
-  api_mode: chat_completion # Or response to use the Responses API.
-  generation_kwargs:
-    model: gpt-4o-mini
-
-source:
-  arxiv:
-    category: ["cs.AI","cs.CV","cs.LG","cs.CL"]
-    include_cross_list: false # Set to true to include arXiv cross-list papers in these categories.
+  api_key: ${OPENAI_API_KEY}
+  base_url: ${OPENAI_API_BASE}
+  model: gpt-4o-mini
 
 executor:
-  debug: ${oc.env:DEBUG,null}
-  source: ['arxiv']
+  categories: ["cs.AI", "cs.CV", "cs.LG", "cs.CL"]
+  include_cross_list: false # Set to true to include arXiv cross-list papers in these categories.
 ```
-Set `source.arxiv.include_cross_list: true` if you want cross-listed papers included.
+`smtp_server` / `smtp_port` may be omitted: they are then read from the `EMAIL_SMTP_SERVER` / `EMAIL_SMTP_PORT` variables (preferred) or the legacy `SMTP_SERVER` / `SMTP_PORT` secrets.
 >[!NOTE]
 > `${oc.env:XXX,yyy}` means the value of the environment variable `XXX`. If the variable is not set, the default value `yyy` will be used.
 
-Here is the full configuration, `???` means the value must be filled in:
+Here is the full configuration (`config/base.yaml`); anything set in `CUSTOM_CONFIG` is deep-merged on top of it, and `${VAR}` interpolates environment variables (`${VAR:default}` provides a fallback):
 ```yaml
 zotero:
-  user_id: ??? # User ID of your Zotero account.
-  api_key: ??? # An Zotero API key with read access.
-  include_path: null # A list of glob patterns marking the Zotero collections that should be included. Example: ["2026/survey/**", "2026/reading-group/**"]
-
-source:
-  arxiv:
-    category: null # The categories of target arxiv papers. Find the abbr of your research area from [here](https://arxiv.org/category_taxonomy). Example: ["cs.AI","cs.CV","cs.LG","cs.CL"]
-    include_cross_list: false # Whether to include arXiv cross-list papers in subscribed categories. Example: true
-  biorxiv:
-    category: null # The categories of target biorxiv papers. Find categories from [here](https://www.biorxiv.org/). Example: ["biochemistry","animal behavior and cognition"]
-  medrxiv:
-    category: null # The categories of target medrxiv papers. Find categories from [here](https://www.medrxiv.org/) Example: ["psychiatry and clinical psychology", "neurology"]
-  chemrxiv:
-    include_new_versions: false # Whether to include revised versions (v2, v3, ...) of previously posted chemrxiv preprints in addition to new first postings. chemrxiv has no category filter: all new preprints (a few dozen per day) are retrieved via Crossref and left to the reranker. Example: true
+  user_id: ${ZOTERO_ID} # User ID of your Zotero account.
+  api_key: ${ZOTERO_KEY} # A Zotero API key with read access.
+  include_path: null # Glob patterns of collections to include. Example: ["2026/survey/**"]
+  ignore_path: null # Glob patterns of collections to exclude. Example: ["archive/**"]
 
 email:
-  sender: ??? # The email account of the SMTP server that sends you email. Example: abc@qq.com
-  receiver: ??? # The email account that receives the paper list. Example: abc@outlook.com
-  smtp_server: ??? # The SMTP server that sends the email. Ask your email provider (Gmail, QQ, Outlook, ...) for its SMTP server. Example: smtp.qq.com
-  smtp_port: ??? # The port of SMTP server. Example: 465
-  sender_password: ??? # The password of the sender account. Note that it's not necessarily the password for logging in the e-mail client, but the authentication code for SMTP service. Ask your email provider for this. Example: abcdefghijklmn
+  sender: ${SENDER}
+  receiver: ${RECEIVER}
+  sender_password: ${SENDER_PASSWORD}
+  subject_prefix: Daily Papers
 
 llm:
-  api:
-    key: ??? # API Key of your LLM API. Example: sk-xxx
-    base_url: ??? # API URL of your LLM API. Example: https://api.openai.com/v1
-  api_mode: chat_completion # The LLM API to use. Options: chat_completion or response.
-  generation_kwargs:
-  # Arguments for the selected LLM API.
-    max_tokens: 16384
-    model: ???
-  language: English # Preferred language for the TL;DR. Example: English
+  api_key: ${OPENAI_API_KEY}
+  base_url: ${OPENAI_API_BASE}
+  model: gpt-4o-mini
+  max_tokens: 16384
+  language: Traditional Chinese # Teaser output language
+  requests_per_minute: 10 # Max chat-completion requests per minute; 0 disables throttling
+  teaser_char_limit: 150 # Max characters per teaser
+  teaser_batch_size: 10 # Papers per teaser LLM request
 
-reranker:
-  local:
-    model: jinaai/jina-embeddings-v5-text-nano # The Hugging Face model name of the local embedding model. Example: jinaai/jina-embeddings-v5-text-nano
-    encode_kwargs:
-    # The kwargs for the encode method of the local embedding model. Details see [here](https://www.sbert.net/docs/package_reference/SentenceTransformer.html#sentence_transformers.SentenceTransformer.encode)
-      task: retrieval
-      prompt_name: document
-  api:
-    key: null # API Key of your embedding model API. Example: sk-xxx
-    base_url: null # API URL of your embedding model API. Example: https://api.openai.com/v1
-    model: null # The model name of the embedding model. Example: text-embedding-3-large
-    batch_size: null # The batch size for embedding API requests. Adjust to match your provider's limit. Example: 64
+embedding:
+  model: jinaai/jina-embeddings-v5-text-nano-retrieval # Hugging Face embedding model for ranking
 
 executor:
-  debug: false # Whether to use debug mode. Example: true
-  send_empty: false # Whether to send an empty email even if no new papers today. Example: true
-  max_paper_num: 100 # The maximum number of the papers presented in the email. Example: 100
-  source: ??? # The sources of papers to retrieve. Example: ['arxiv','biorxiv','medrxiv','chemrxiv']
-  reranker: local # The reranker to use. Example: 'local' or 'api'
-```
+  categories: ["cs.AI", "cs.CV", "cs.LG", "cs.CL"] # arXiv categories to follow
+  include_cross_list: false
+  send_empty: false # Send an email even when no new papers were found
+  max_paper_num: 100 # Papers presented in the email
+  lookback_days: 3 # Days back to retrieve, so a failed run is caught up next run
+  state_file: state/recommended.json
+  preferences_file: preferences.yaml # Weekly-review boost/mute keywords
+  fulltext_paper_num: 30 # Top N papers get full-text fetching after ranking
+
 
 That's all! Now you can test the workflow by manually triggering it:
 ![test](./assets/test.png)
@@ -191,7 +164,7 @@ This project is in active development. You can subscribe this repo via `Watch` s
 
 
 ## 📖 How it works
-*Zotero-arXiv-Daily* firstly retrieves all the papers in your Zotero library and all the papers released in the previous `lookback_days` days, via corresponding API. Then it calculates the embedding of each paper's abstract via an embedding model (corpus embeddings are cached between runs). The score of a paper is its weighted average similarity over all your Zotero papers (newer paper added to the library has higher weight). Full text is fetched only for the top ranked papers, and the TLDR of each paper is generated by LLM.
+*Zotero-arXiv-Daily* firstly retrieves all the papers in your Zotero library and all the papers released in the previous `lookback_days` days, via corresponding API. Then it calculates the embedding of each paper's abstract via an embedding model (corpus embeddings are cached between runs). The score of a paper is its weighted average similarity over all your Zotero papers (newer paper added to the library has higher weight). Full text is fetched only for the top ranked papers, and a short Traditional-Chinese teaser for each paper is generated by LLM (one batched request per 10 papers). arXiv retrieval falls back to an OAI-PMH harvest when the search API is rate-limited.
 
 ## 🗃️ State and caching
 The pipeline keeps two state files (persisted between runs via [actions/cache](https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows) in the bundled workflow):

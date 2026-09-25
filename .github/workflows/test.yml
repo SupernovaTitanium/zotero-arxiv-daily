@@ -8,13 +8,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-      #  with:
-      #    repository: ${{ vars.REPOSITORY }}
-      #    ref: ${{ vars.REF }}
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v7.1.4
-
 
       - name: Run script
         env:
@@ -23,8 +19,6 @@ jobs:
           SENDER: ${{ secrets.SENDER }}
           RECEIVER: ${{ secrets.RECEIVER }}
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
-          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
           EMAIL_SMTP_SERVER: ${{ vars.EMAIL_SMTP_SERVER }}
           EMAIL_SMTP_PORT: ${{ vars.EMAIL_SMTP_PORT }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -33,7 +27,6 @@ jobs:
         run: |
           export DEBUG=true
           printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
-          uv run python scripts/apply_config_env_overrides.py config/custom.yaml
           echo "Use custom config: "
           sed -E 's/^([[:space:]]*[^#]*?(key|password|secret|token)[^:]*):.*/\1: ***MASKED***/I' config/custom.yaml
           uv run python scripts/smoke_arxiv_teaser_email.py --max-papers 3

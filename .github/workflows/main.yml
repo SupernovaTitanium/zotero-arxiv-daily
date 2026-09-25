@@ -76,8 +76,6 @@ jobs:
           SENDER: ${{ secrets.SENDER }}
           RECEIVER: ${{ secrets.RECEIVER }}
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
-          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
           EMAIL_SMTP_SERVER: ${{ vars.EMAIL_SMTP_SERVER }}
           EMAIL_SMTP_PORT: ${{ vars.EMAIL_SMTP_PORT }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -88,19 +86,11 @@ jobs:
           MAX_PAPER_NUM: ${{ inputs.max_paper_num }}
         run: |
           printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
-          if [ -n "$LOOKBACK_DAYS" ]; then
-            sed -i "s/^\([[:space:]]*lookback_days:\).*/\1 $LOOKBACK_DAYS/" config/custom.yaml
-            echo "Backfill run: lookback_days overridden to $LOOKBACK_DAYS"
-          fi
-          if [ -n "$MAX_PAPER_NUM" ]; then
-            sed -i "s/^\([[:space:]]*max_paper_num:\).*/\1 $MAX_PAPER_NUM/" config/custom.yaml
-            echo "Override: max_paper_num set to $MAX_PAPER_NUM"
-          fi
           if [ "$FRESH_STATE" = "true" ]; then
             rm -f state/recommended.json
             echo "Fresh-state run: removed restored state/recommended.json; dedup history starts empty"
           fi
-          uv run python scripts/apply_config_env_overrides.py config/custom.yaml
+          # LOOKBACK_DAYS / MAX_PAPER_NUM are applied by the config loader itself.
           echo "Use custom config: "
           # Mask values of key/password/secret-like entries in case someone
           # pasted real credentials into CUSTOM_CONFIG.
@@ -113,8 +103,6 @@ jobs:
           SENDER: ${{ secrets.SENDER }}
           RECEIVER: ${{ secrets.RECEIVER }}
           SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
-          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
           EMAIL_SMTP_SERVER: ${{ vars.EMAIL_SMTP_SERVER }}
           EMAIL_SMTP_PORT: ${{ vars.EMAIL_SMTP_PORT }}
           CUSTOM_CONFIG: ${{ vars.CUSTOM_CONFIG }}
@@ -122,7 +110,6 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           printf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml
-          uv run python scripts/apply_config_env_overrides.py config/custom.yaml
           uv run python scripts/resend_email.py --run-id "$RESEND_RUN_ID"
 
       - name: Save recommendation state

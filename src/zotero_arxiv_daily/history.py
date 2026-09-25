@@ -1,14 +1,13 @@
 """Persistent record of papers already processed, so they are never recommended twice.
 
-Format v2 (``{"papers": {primary_key: entry}}``) stores, per paper: the day it
+Format (``{"papers": {primary_key: entry}}``) stores, per paper: the day it
 was processed, its title and an abstract snippet, whether it was presented in
 the email, and all of its dedup keys. This lets the weekly preference review
 tell "recommended but never saved" (negative signal) apart from "recommended
 and later added to Zotero" (positive signal) without any extra clicks.
-
-Format v1 (flat ``key -> date``) is loaded transparently; v1 entries carry no
-metadata, so they never count as presented.
 """
+
+from __future__ import annotations
 
 import json
 from datetime import date, datetime, timedelta
@@ -29,22 +28,9 @@ class RecommendedHistory:
             return cls(path)
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(data, dict) and isinstance(data.get("papers"), dict):
-                return cls(path, data["papers"])
-            # v1 flat format: key -> iso date string
-            if isinstance(data, dict):
-                papers = {
-                    str(k): {
-                        "date": str(v)[:10],
-                        "title": "",
-                        "abstract": "",
-                        "presented": None,
-                        "keys": [str(k)],
-                    }
-                    for k, v in data.items()
-                }
-                return cls(path, papers)
-            raise ValueError("history file is not a JSON object")
+            if not isinstance(data, dict) or not isinstance(data.get("papers"), dict):
+                raise ValueError("history file is not a v2 JSON object")
+            return cls(path, data["papers"])
         except (OSError, ValueError) as e:
             logger.warning(f"Ignoring unreadable recommendation history {path}: {e}")
             return cls(path)
@@ -68,7 +54,7 @@ class RecommendedHistory:
             return
         day_iso = (day or date.today()).isoformat()
         # Merge into an existing entry when any key is already known (e.g. a
-        # v1-migrated entry or a paper reprocessed with new identifiers).
+        # paper reprocessed with new identifiers).
         primary = next((k for k in keys if k in self.papers), None)
         if primary is None:
             primary = keys[0]
@@ -103,9 +89,7 @@ class RecommendedHistory:
         elif entry.get("presented") is None and presented is not None:
             entry["presented"] = False
 
-    def presented_not_saved(
-        self, corpus_keys: set[str], cutoff: date
-    ) -> tuple[list[dict], list[dict]]:
+    def presented_not_saved(self, corpus_keys: set[str], cutoff: date) -> tuple[list[dict], list[dict]]:
         """Split presented papers into saved (keys intersect the current Zotero
         corpus) and ignored (no intersection, and older than the grace cutoff)."""
         saved: list[dict] = []
@@ -131,9 +115,7 @@ class RecommendedHistory:
             return
         today = today or date.today()
         cutoff = today - timedelta(days=history_days)
-        self.papers = {
-            k: v for k, v in self.papers.items() if self._entry_date(v) >= cutoff
-        }
+        self.papers = {k: v for k, v in self.papers.items() if self._entry_date(v) >= cutoff}
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

@@ -25,32 +25,26 @@ uv run pytest tests/test_utils.py::TestGlobMatch -v
 uv sync
 ```
 
-No linter or formatter is configured.
+No linter or formatter is configured. Lint with `uv run ruff check src tests scripts`.
 
 ## Architecture
 
-The app follows a linear pipeline orchestrated by `Executor` (`src/zotero_arxiv_daily/executor.py`):
+The app is a linear pipeline in `src/zotero_arxiv_daily/pipeline.py` (`run(config)`):
 
-1. **Fetch Zotero corpus** — retrieves user's library papers via pyzotero API
-2. **Filter corpus** — applies `include_path` glob patterns to select relevant collections
-3. **Retrieve new papers** — fetches from configured sources (arXiv RSS, bioRxiv/medRxiv REST API, chemRxiv via Crossref REST API)
-4. **Rerank** — scores candidates by weighted similarity to corpus (newer Zotero papers weighted higher)
-5. **Generate TLDRs + affiliations** — via OpenAI-compatible LLM API
-6. **Render + send email** — HTML email via SMTP
-
-### Plugin Systems
-
-**Retrievers** (`src/zotero_arxiv_daily/retriever/`): Register via `@register_retriever` decorator, discovered by `get_retriever_cls()`. Each retriever implements `_retrieve_raw_papers()` and `convert_to_paper()`.
-
-**Rerankers** (`src/zotero_arxiv_daily/reranker/`): Register via `@register_reranker` decorator, discovered by `get_reranker_cls()`. Two implementations: `local` (sentence-transformers) and `api` (OpenAI-compatible embeddings endpoint).
+1. **Fetch Zotero corpus** — `zotero.py`, via pyzotero; `include_path`/`ignore_path` glob filtering
+2. **Retrieve new arXiv papers** — `arxiv.py`: search API primary, OAI-PMH harvest fallback (arXiv hard-throttles runner IPs; do not add polling loops against arXiv)
+3. **Rank** — `embed.py`: local sentence-transformers embeddings (disk-cached in `state/corpus_embeddings.npz`, namespaced by model key), time-decayed corpus similarity, weekly-review preference boost/mute
+4. **Topic grouping + full text** — greedy clustering for the email; full text (LaTeX tar → HTML → PDF, subprocess hard timeout) only for the top papers
+5. **Generate teasers** — `teaser.py`: one batched LLM request per N papers, per-paper fallback; teaser mode only (no TLDR/affiliations/deep-digest paths)
+6. **Render + send email** — `email.py` + `mailer.py`; run outputs written before sending, dedup history (`history.py`) persisted only after the send succeeds
 
 ### Configuration
 
-Uses Hydra + OmegaConf. Config is composed from `config/base.yaml` (defaults) + `config/custom.yaml` (user overrides). Environment variables are interpolated via `${oc.env:VAR_NAME,default}` syntax. Entry point uses `@hydra.main`.
+`config.py` loads `config/base.yaml` + optional `config/custom.yaml` (written from the CUSTOM_CONFIG variable in Actions) with `${VAR}` / `${VAR:default}` env interpolation into dataclasses. `EMAIL_SMTP_SERVER`/`EMAIL_SMTP_PORT` (preferred) or legacy `SMTP_SERVER`/`SMTP_PORT` supply SMTP settings; `LOOKBACK_DAYS`, `MAX_PAPER_NUM`, `DEBUG` override executor values. Entry point is `main.py` (no Hydra).
 
 ### Data Classes
 
-`Paper` and `CorpusPaper` in `src/zotero_arxiv_daily/protocol.py`. `Paper` has LLM-powered methods (`generate_tldr`, `generate_affiliations`) that call the OpenAI API directly.
+`Paper` and `CorpusPaper` in `src/zotero_arxiv_daily/paper.py` (plain data; no LLM methods).
 
 ## Testing
 

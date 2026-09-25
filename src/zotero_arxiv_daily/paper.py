@@ -1,12 +1,11 @@
+"""Core data structures: a retrieved paper and a Zotero corpus paper."""
+
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Optional, TypeVar
 from datetime import datetime
-from openai import OpenAI
 
 from .utils import normalize_doi, normalize_title
-from .summarize import generate_affiliations_for_paper, generate_tldr_for_paper
-
-RawPaperItem = TypeVar('RawPaperItem')
 
 
 @dataclass
@@ -16,16 +15,13 @@ class Paper:
     authors: list[str]
     abstract: str
     url: str
-    pdf_url: Optional[str] = None
-    full_text: Optional[str] = None
-    tldr: Optional[str] = None
-    teaser: Optional[str] = None
-    tldr_markdown: Optional[str] = None
-    affiliations: Optional[list[str]] = None
-    score: Optional[float] = None
-    doi: Optional[str] = None
-    source_id: Optional[str] = None
-    topic: Optional[str] = None
+    pdf_url: str | None = None
+    full_text: str | None = None
+    teaser: str | None = None
+    score: float | None = None
+    doi: str | None = None
+    source_id: str | None = None
+    topic: str | None = None
 
     def dedup_keys(self) -> list[str]:
         keys = []
@@ -37,11 +33,6 @@ class Paper:
             keys.append(f"sid:{self.source}:{self.source_id}")
         return keys
 
-    def generate_tldr(self, openai_client: OpenAI, llm_params: dict) -> str:
-        return generate_tldr_for_paper(self, openai_client, llm_params)
-
-    def generate_affiliations(self, openai_client: OpenAI, llm_params: dict) -> Optional[list[str]]:
-        return generate_affiliations_for_paper(self, openai_client, llm_params)
 
 @dataclass
 class CorpusPaper:
@@ -49,7 +40,7 @@ class CorpusPaper:
     abstract: str
     added_date: datetime
     paths: list[str]
-    doi: Optional[str] = None
+    doi: str | None = None
 
     def dedup_keys(self) -> list[str]:
         keys = []
