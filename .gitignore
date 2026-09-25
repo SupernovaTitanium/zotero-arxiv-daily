@@ -25,3 +25,7 @@ output/
 
 # Coverage artifacts
 .coverage
+
+# Local API scratch files
+vars_tmp.json
+secrets_tmp.json
