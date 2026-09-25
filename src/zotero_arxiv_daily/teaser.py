@@ -25,6 +25,9 @@ def make_llm_client(llm: LlmConfig) -> OpenAI:
 
 
 def _chat(client: OpenAI, llm: LlmConfig, system: str, prompt: str) -> str:
+    # Streaming is deliberately not supported here: non-streaming keeps batch
+    # JSON parsing simple and the rate limiter's per-request accounting exact.
+    extra = {k: v for k, v in llm.generation_kwargs.items() if k != "stream"}
     response = client.chat.completions.create(
         messages=[
             {"role": "system", "content": system},
@@ -32,6 +35,7 @@ def _chat(client: OpenAI, llm: LlmConfig, system: str, prompt: str) -> str:
         ],
         model=llm.model,
         max_tokens=llm.max_tokens,
+        **extra,
     )
     return response.choices[0].message.content or ""
 

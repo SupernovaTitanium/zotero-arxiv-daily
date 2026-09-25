@@ -100,6 +100,7 @@ class LlmConfig:
     teaser_char_limit: int = 150
     teaser_batch_size: int = 10
     system_prompt: str | None = None
+    generation_kwargs: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -249,6 +250,7 @@ def load_config(config_dir: str | Path = "config") -> Config:
             teaser_char_limit=int(llm.get("teaser_char_limit", 150) or 150),
             teaser_batch_size=int(llm.get("teaser_batch_size", 10) or 1),
             system_prompt=llm.get("system_prompt") or None,
+            generation_kwargs=dict(llm.get("generation_kwargs") or {}),
         ),
         executor=executor_cfg,
         embedding=EmbeddingConfig(

@@ -67,8 +67,9 @@ def main() -> None:
     )
 
     def _chat(messages: list[dict]) -> str:
+        extra = {k: v for k, v in config.llm.generation_kwargs.items() if k != "stream"}
         response = client.chat.completions.create(
-            messages=messages, model=config.llm.model, max_tokens=config.llm.max_tokens
+            messages=messages, model=config.llm.model, max_tokens=config.llm.max_tokens, **extra
         )
         return response.choices[0].message.content or ""
 

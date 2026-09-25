@@ -67,3 +67,32 @@ def test_teaser_is_clipped_to_char_limit(monkeypatch, llm):
     monkeypatch.setattr(teaser_module, "_chat", stub_chat)
     teaser = teaser_module.generate_teaser(object(), llm, "T", "A", None)
     assert len(teaser) == 10
+
+
+def test_generation_kwargs_passed_and_stream_stripped(monkeypatch, llm, config):
+    llm.generation_kwargs = {"temperature": 1.0, "top_p": 0.95, "seed": 114514, "stream": True}
+    captured = {}
+
+    def stub_create(**kwargs):
+        captured.update(kwargs)
+        response = make_stub_response("teaser")
+        return response
+
+    from types import SimpleNamespace
+
+    def make_stub_response(content):
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=content))]
+        )
+
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=stub_create))
+    )
+    teaser = teaser_module.generate_teaser(client, llm, "T", "A", None)
+    assert teaser == "teaser"
+    assert captured["temperature"] == 1.0
+    assert captured["top_p"] == 0.95
+    assert captured["seed"] == 114514
+    assert "stream" not in captured
+    assert captured["model"] == llm.model
+    assert captured["max_tokens"] == llm.max_tokens
