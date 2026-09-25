@@ -22,3 +22,6 @@ state/
 
 # Run outputs (email + run summary artifacts)
 output/
+
+# Coverage artifacts
+.coverage
