@@ -97,7 +97,7 @@ jobs:
           # Mask values of key/password/secret-like entries in case someone
           # pasted real credentials into CUSTOM_CONFIG.
           sed -E 's/^([[:space:]]*[^#]*?(key|password|secret|token)[^:]*):.*/\1: ***MASKED***/I' config/custom.yaml
-          uv run src/zotero_arxiv_daily/main.py
+          uv run python -m zotero_arxiv_daily.main
 
       - name: Resend email from a previous run
         if: inputs.resend_run_id != ''

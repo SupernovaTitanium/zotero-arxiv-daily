@@ -10,7 +10,7 @@ Zotero-arXiv-Daily recommends new arXiv/bioRxiv/medRxiv/chemRxiv papers based on
 
 ```bash
 # Run the application
-uv run src/zotero_arxiv_daily/main.py
+uv run python -m zotero_arxiv_daily.main
 
 # Run tests (excludes slow tests by default)
 uv run pytest

@@ -154,7 +154,7 @@ Supported by [uv](https://github.com/astral-sh/uv), this workflow can easily run
 # export ZOTERO_ID=xxxx
 # ...
 cd zotero-arxiv-daily
-uv run main.py
+uv run python -m zotero_arxiv_daily.main
 ```
 
 ## 🚀 Sync with the latest version
