@@ -9,8 +9,6 @@ since the test env has no credentials), never ImportError.
 import subprocess
 import sys
 
-from zotero_arxiv_daily.config import ConfigError
-
 
 def test_module_invocation_reaches_config_loading():
     proc = subprocess.run(
