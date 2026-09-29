@@ -29,3 +29,6 @@ output/
 # Local API scratch files
 vars_tmp.json
 secrets_tmp.json
+job_log.txt
+runs_tmp.json
+*_log.txt
