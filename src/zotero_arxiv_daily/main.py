@@ -32,6 +32,12 @@ def main(config_dir: str = "config") -> None:
     if config.executor.debug:
         logger.info("Debug mode is enabled")
     run(config)
+    # Some runner sessions leave a lingering non-daemon thread (observed as the
+    # completed pipeline hanging until the 6h watchdog kills it, with the email
+    # already sent), so exit the interpreter explicitly once the work is done.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
 
 
 if __name__ == "__main__":
