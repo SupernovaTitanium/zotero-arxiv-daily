@@ -1,0 +1,403 @@
+﻿2026-09-25T07:04:45.0355595Z Current runner version: '2.337.0'
+2026-09-25T07:04:45.0383618Z ##[group]Runner Image Provisioner
+2026-09-25T07:04:45.0384702Z Hosted Compute Agent
+2026-09-25T07:04:45.0385419Z Version: 20260828.587
+2026-09-25T07:04:45.0386181Z Commit: abac92662cab4cc7352de4f9f9d2e2419aad9c29
+2026-09-25T07:04:45.0387083Z Build Date: 2026-08-28T16:44:25Z
+2026-09-25T07:04:45.0387830Z Worker ID: {90fa4529-7a9e-4b0d-bc02-faf11798e9c1}
+2026-09-25T07:04:45.0388955Z Azure Region: westus
+2026-09-25T07:04:45.0389636Z ##[endgroup]
+2026-09-25T07:04:45.0391450Z ##[group]Operating System
+2026-09-25T07:04:45.0392263Z Ubuntu
+2026-09-25T07:04:45.0392939Z 24.04.5
+2026-09-25T07:04:45.0393558Z LTS
+2026-09-25T07:04:45.0394163Z ##[endgroup]
+2026-09-25T07:04:45.0394873Z ##[group]Runner Image
+2026-09-25T07:04:45.0396054Z Image: ubuntu-24.04
+2026-09-25T07:04:45.0396727Z Version: 20260920.314.1
+2026-09-25T07:04:45.0398279Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260920.314/images/ubuntu/Ubuntu2404-Readme.md
+2026-09-25T07:04:45.0400310Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260920.314
+2026-09-25T07:04:45.0401516Z ##[endgroup]
+2026-09-25T07:04:45.0404790Z ##[group]GITHUB_TOKEN Permissions
+2026-09-25T07:04:45.0407523Z Actions: write
+2026-09-25T07:04:45.0408321Z ArtifactMetadata: write
+2026-09-25T07:04:45.0409522Z Attestations: write
+2026-09-25T07:04:45.0410239Z Checks: write
+2026-09-25T07:04:45.0411080Z CodeQuality: write
+2026-09-25T07:04:45.0411773Z Contents: write
+2026-09-25T07:04:45.0412585Z CopilotRequests: write
+2026-09-25T07:04:45.0413343Z Deployments: write
+2026-09-25T07:04:45.0414130Z Discussions: write
+2026-09-25T07:04:45.0414861Z Drives: write
+2026-09-25T07:04:45.0415552Z Issues: write
+2026-09-25T07:04:45.0416293Z Metadata: read
+2026-09-25T07:04:45.0417191Z Models: read
+2026-09-25T07:04:45.0417881Z Packages: write
+2026-09-25T07:04:45.0418786Z Pages: write
+2026-09-25T07:04:45.0419562Z PullRequests: write
+2026-09-25T07:04:45.0420254Z RepositoryProjects: write
+2026-09-25T07:04:45.0421046Z SecurityEvents: write
+2026-09-25T07:04:45.0421659Z Statuses: write
+2026-09-25T07:04:45.0422340Z VulnerabilityAlerts: read
+2026-09-25T07:04:45.0422972Z ##[endgroup]
+2026-09-25T07:04:45.0425370Z Secret source: Actions
+2026-09-25T07:04:45.0426459Z Cache mode: write
+2026-09-25T07:04:45.0427357Z Prepare workflow directory
+2026-09-25T07:04:45.0797294Z Prepare all required actions
+2026-09-25T07:04:45.0849552Z Getting action download info
+2026-09-25T07:04:45.4856097Z Download action repository 'actions/checkout@v6' (SHA:d23441a48e516b6c34aea4fa41551a30e30af803)
+2026-09-25T07:04:45.6227049Z Download action repository 'astral-sh/setup-uv@v7.1.4' (SHA:1e862dfacbd1d6d858c55d9b792c756523627244)
+2026-09-25T07:04:46.2399979Z Complete job name: calculate-and-send
+2026-09-25T07:04:46.3273194Z ##[group]Run actions/checkout@v6
+2026-09-25T07:04:46.3274238Z with:
+2026-09-25T07:04:46.3274874Z   repository: SupernovaTitanium/zotero-arxiv-daily
+2026-09-25T07:04:46.3279640Z   token: ***
+2026-09-25T07:04:46.3280190Z   ssh-strict: true
+2026-09-25T07:04:46.3280765Z   ssh-user: git
+2026-09-25T07:04:46.3281310Z   persist-credentials: true
+2026-09-25T07:04:46.3281901Z   clean: true
+2026-09-25T07:04:46.3282447Z   sparse-checkout-cone-mode: true
+2026-09-25T07:04:46.3283078Z   fetch-depth: 1
+2026-09-25T07:04:46.3283608Z   fetch-tags: false
+2026-09-25T07:04:46.3284140Z   show-progress: true
+2026-09-25T07:04:46.3284686Z   lfs: false
+2026-09-25T07:04:46.3285200Z   submodules: false
+2026-09-25T07:04:46.3285762Z   set-safe-directory: true
+2026-09-25T07:04:46.3286364Z   allow-unsafe-pr-checkout: false
+2026-09-25T07:04:46.3287284Z ##[endgroup]
+2026-09-25T07:04:46.4378110Z Syncing repository: SupernovaTitanium/zotero-arxiv-daily
+2026-09-25T07:04:46.4380980Z ##[group]Getting Git version info
+2026-09-25T07:04:46.4382207Z Working directory is '/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily'
+2026-09-25T07:04:46.4383540Z [command]/usr/bin/git version
+2026-09-25T07:04:46.4463424Z git version 2.55.0
+2026-09-25T07:04:46.4503894Z ##[endgroup]
+2026-09-25T07:04:46.4524106Z Temporarily overriding HOME='/home/runner/work/_temp/5ab53e98-fd17-4119-bacd-e8f445ea0d01' before making global git config changes
+2026-09-25T07:04:46.4526820Z Adding repository directory to the temporary git global config as a safe directory
+2026-09-25T07:04:46.4531378Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily
+2026-09-25T07:04:46.4604064Z Deleting the contents of '/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily'
+2026-09-25T07:04:46.4612306Z ##[group]Determining repository object format
+2026-09-25T07:04:46.4615116Z ##[endgroup]
+2026-09-25T07:04:46.4616975Z ##[group]Initializing the repository
+2026-09-25T07:04:46.4621929Z [command]/usr/bin/git init /home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily
+2026-09-25T07:04:46.4764619Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-09-25T07:04:46.4767147Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-09-25T07:04:46.4769696Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-09-25T07:04:46.4771566Z hint: call:
+2026-09-25T07:04:46.4774163Z hint:
+2026-09-25T07:04:46.4775468Z hint: 	git config --global init.defaultBranch <name>
+2026-09-25T07:04:46.4777071Z hint:
+2026-09-25T07:04:46.4778774Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-09-25T07:04:46.4781202Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-09-25T07:04:46.4783110Z hint:
+2026-09-25T07:04:46.4784649Z hint: 	git branch -m <name>
+2026-09-25T07:04:46.4785769Z hint:
+2026-09-25T07:04:46.4787091Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-09-25T07:04:46.4790422Z Initialized empty Git repository in /home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/.git/
+2026-09-25T07:04:46.4793299Z [command]/usr/bin/git remote add origin https://github.com/SupernovaTitanium/zotero-arxiv-daily
+2026-09-25T07:04:46.4848038Z ##[endgroup]
+2026-09-25T07:04:46.4850365Z ##[group]Disabling automatic garbage collection
+2026-09-25T07:04:46.4854974Z [command]/usr/bin/git config --local gc.auto 0
+2026-09-25T07:04:46.4902413Z ##[endgroup]
+2026-09-25T07:04:46.4904417Z ##[group]Setting up auth
+2026-09-25T07:04:46.4905946Z Removing SSH command configuration
+2026-09-25T07:04:46.4909525Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-09-25T07:04:46.4955172Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-09-25T07:04:46.5374961Z Removing HTTP extra header
+2026-09-25T07:04:46.5382865Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-09-25T07:04:46.5419728Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-09-25T07:04:46.5646707Z Removing includeIf entries pointing to credentials config files
+2026-09-25T07:04:46.5653866Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-09-25T07:04:46.5694043Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-09-25T07:04:46.5933307Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-374f0425-8111-4d1e-b78b-f194bc8f043b.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-09-25T07:04:46.5977724Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/.git.path /home/runner/work/_temp/git-credentials-374f0425-8111-4d1e-b78b-f194bc8f043b.config
+2026-09-25T07:04:46.6015699Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-374f0425-8111-4d1e-b78b-f194bc8f043b.config
+2026-09-25T07:04:46.6056945Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-374f0425-8111-4d1e-b78b-f194bc8f043b.config
+2026-09-25T07:04:46.6094916Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-374f0425-8111-4d1e-b78b-f194bc8f043b.config
+2026-09-25T07:04:46.6153356Z ##[endgroup]
+2026-09-25T07:04:46.6154409Z ##[group]Fetching the repository
+2026-09-25T07:04:46.6162308Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +7424fb06d0d336a7cd6ca192465d597f4e402477:refs/remotes/origin/main
+2026-09-25T07:04:47.2857434Z From https://github.com/SupernovaTitanium/zotero-arxiv-daily
+2026-09-25T07:04:47.2860437Z  * [new ref]         7424fb06d0d336a7cd6ca192465d597f4e402477 -> origin/main
+2026-09-25T07:04:47.2868490Z [command]/usr/bin/git branch --list --remote origin/main
+2026-09-25T07:04:47.2900601Z   origin/main
+2026-09-25T07:04:47.2912185Z [command]/usr/bin/git rev-parse refs/remotes/origin/main
+2026-09-25T07:04:47.2942259Z 7424fb06d0d336a7cd6ca192465d597f4e402477
+2026-09-25T07:04:47.2949581Z ##[endgroup]
+2026-09-25T07:04:47.2952356Z ##[group]Determining the checkout info
+2026-09-25T07:04:47.2954965Z ##[endgroup]
+2026-09-25T07:04:47.2956060Z [command]/usr/bin/git sparse-checkout disable
+2026-09-25T07:04:47.3021797Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-09-25T07:04:47.3059000Z ##[group]Checking out the ref
+2026-09-25T07:04:47.3062821Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-09-25T07:04:47.3342788Z Switched to a new branch 'main'
+2026-09-25T07:04:47.3347760Z branch 'main' set up to track 'origin/main'.
+2026-09-25T07:04:47.3359388Z ##[endgroup]
+2026-09-25T07:04:47.3424352Z [command]/usr/bin/git log -1 --format=%H
+2026-09-25T07:04:47.3455877Z 7424fb06d0d336a7cd6ca192465d597f4e402477
+2026-09-25T07:04:47.3997869Z ##[group]Run astral-sh/setup-uv@v7.1.4
+2026-09-25T07:04:47.3999569Z with:
+2026-09-25T07:04:47.4000641Z   activate-environment: false
+2026-09-25T07:04:47.4002460Z   working-directory: /home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily
+2026-09-25T07:04:47.4014239Z   github-token: ***
+2026-09-25T07:04:47.4015375Z   enable-cache: auto
+2026-09-25T07:04:47.4018013Z   cache-dependency-glob: **/*requirements*.txt
+**/*requirements*.in
+**/*constraints*.txt
+**/*constraints*.in
+**/pyproject.toml
+**/uv.lock
+**/*.py.lock
+
+2026-09-25T07:04:47.4021015Z   restore-cache: true
+2026-09-25T07:04:47.4022152Z   save-cache: true
+2026-09-25T07:04:47.4023249Z   prune-cache: true
+2026-09-25T07:04:47.4024361Z   cache-python: false
+2026-09-25T07:04:47.4025564Z   ignore-nothing-to-cache: false
+2026-09-25T07:04:47.4026911Z   ignore-empty-workdir: false
+2026-09-25T07:04:47.4028210Z   add-problem-matchers: true
+2026-09-25T07:04:47.4029859Z   resolution-strategy: highest
+2026-09-25T07:04:47.4031181Z ##[endgroup]
+2026-09-25T07:04:47.5677460Z (node:2240) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-09-25T07:04:47.5680984Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-09-25T07:04:47.5843226Z Trying to find version for uv in: /home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/uv.toml
+2026-09-25T07:04:47.5848117Z Could not find file: /home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/uv.toml
+2026-09-25T07:04:47.5851990Z Trying to find version for uv in: /home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/pyproject.toml
+2026-09-25T07:04:47.5855727Z Could not determine uv version from uv.toml or pyproject.toml. Falling back to latest.
+2026-09-25T07:04:47.5859921Z Getting latest version from GitHub API...
+2026-09-25T07:04:47.9245096Z manifest-file not provided, reading from local file.
+2026-09-25T07:04:47.9285692Z manifest-file does not contain version 0.12.19, arch x86_64, platform unknown-linux-gnu. Falling back to GitHub releases.
+2026-09-25T07:04:47.9292777Z Downloading uv from "https://github.com/astral-sh/uv/releases/download/0.12.19/uv-x86_64-unknown-linux-gnu.tar.gz" ...
+2026-09-25T07:04:48.2341557Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/99f37542-7596-4582-af39-17ad9d3393db -f /home/runner/work/_temp/5cafc84b-31ef-4989-81ee-fb5598c34e00
+2026-09-25T07:04:48.6329910Z Added /home/runner/.local/bin to the path
+2026-09-25T07:04:48.6334229Z Added /opt/hostedtoolcache/uv/0.12.19/x86_64 to the path
+2026-09-25T07:04:48.6336074Z Set UV_PYTHON_INSTALL_DIR to /home/runner/work/_temp/uv-python-dir
+2026-09-25T07:04:48.6337759Z Added /home/runner/work/_temp/uv-python-dir to the path
+2026-09-25T07:04:48.6370288Z Set UV_CACHE_DIR to /home/runner/work/_temp/setup-uv-cache
+2026-09-25T07:04:48.6371154Z Successfully installed uv version 0.12.19
+2026-09-25T07:04:48.6375716Z Searching files using cache dependency glob: /home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/**/*requirements*.txt,/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/**/*requirements*.in,/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/**/*constraints*.txt,/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/**/*constraints*.in,/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/**/pyproject.toml,/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/**/uv.lock,/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/**/*.py.lock
+2026-09-25T07:04:48.6828982Z /home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/pyproject.toml
+2026-09-25T07:04:48.6898300Z /home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/uv.lock
+2026-09-25T07:04:48.6912735Z Found 2 files to hash.
+2026-09-25T07:04:48.8041599Z Trying to restore uv cache from GitHub Actions cache with key: setup-uv-1-x86_64-unknown-linux-gnu-unknown-pruned-6f38d8858deafb232a1b88f2bbab02a7143b85122a7d4b37e76800b9a9dc1554
+2026-09-25T07:04:49.0278101Z Cache hit for: setup-uv-1-x86_64-unknown-linux-gnu-unknown-pruned-6f38d8858deafb232a1b88f2bbab02a7143b85122a7d4b37e76800b9a9dc1554
+2026-09-25T07:04:49.0390971Z (node:2240) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-09-25T07:04:49.7870988Z Received 532213 of 532213 (100.0%), 1.1 MBs/sec
+2026-09-25T07:04:49.7871737Z Cache Size: ~1 MB (532213 B)
+2026-09-25T07:04:49.7908476Z [command]/usr/bin/tar -xf /home/runner/work/_temp/ad00296c-dc6c-4416-a275-1f0b77a175f2/cache.tzst -P -C /home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily --use-compress-program unzstd
+2026-09-25T07:04:49.8042557Z Cache restored successfully
+2026-09-25T07:04:49.8047366Z uv cache restored from GitHub Actions cache with key: setup-uv-1-x86_64-unknown-linux-gnu-unknown-pruned-6f38d8858deafb232a1b88f2bbab02a7143b85122a7d4b37e76800b9a9dc1554
+2026-09-25T07:04:49.8738531Z ##[group]Run export DEBUG=true
+2026-09-25T07:04:49.8739240Z [36;1mexport DEBUG=true[0m
+2026-09-25T07:04:49.8739645Z [36;1mprintf "%b\n" "$CUSTOM_CONFIG" > config/custom.yaml[0m
+2026-09-25T07:04:49.8740051Z [36;1mecho "Use custom config: "[0m
+2026-09-25T07:04:49.8740564Z [36;1msed -E 's/^([[:space:]]*[^#]*?(key|password|secret|token)[^:]*):.*/\1: ***MASKED***/I' config/custom.yaml[0m
+2026-09-25T07:04:49.8741201Z [36;1muv run python scripts/smoke_arxiv_teaser_email.py --max-papers 3[0m
+2026-09-25T07:04:49.9051770Z shell: /usr/bin/bash -e {0}
+2026-09-25T07:04:49.9052268Z env:
+2026-09-25T07:04:49.9052770Z   UV_PYTHON_INSTALL_DIR: /home/runner/work/_temp/uv-python-dir
+2026-09-25T07:04:49.9053459Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-09-25T07:04:49.9054262Z   ZOTERO_ID: ***
+2026-09-25T07:04:49.9054722Z   ZOTERO_KEY: ***
+2026-09-25T07:04:49.9055149Z   SENDER: ***
+2026-09-25T07:04:49.9055539Z   RECEIVER: ***
+2026-09-25T07:04:49.9056002Z   SENDER_PASSWORD: ***
+2026-09-25T07:04:49.9056582Z   EMAIL_SMTP_SERVER: 
+2026-09-25T07:04:49.9056909Z   EMAIL_SMTP_PORT: 
+2026-09-25T07:04:49.9057372Z   OPENAI_API_KEY: ***
+2026-09-25T07:04:49.9057817Z   OPENAI_API_BASE: 	***
+2026-09-25T07:04:49.9063907Z   CUSTOM_CONFIG: zotero:
+  user_id: ${ZOTERO_ID}
+  api_key: ${ZOTERO_KEY}
+  include_path: null        # list of glob patterns, e.g. ["2026/survey/**"]; null = 整個庫
+  ignore_path: null         # 要排除的 collection, e.g. ["archive/**"]
+
+email:
+  sender: ${SENDER}
+  receiver: ${RECEIVER}
+  sender_password: ${SENDER_PASSWORD}
+  subject_prefix: Daily ArXiv Papers  # 信件主旨 = "<prefix> YYYY/MM/DD"
+  # smtp_server / smtp_port 不在這裡設：由 EMAIL_SMTP_SERVER/PORT（優先）
+  # 或 SMTP_SERVER/PORT secrets 提供（現為 Gmail smtp.gmail.com:465）
+
+llm:
+  api_key: ${OPENAI_API_KEY}
+  base_url: ***
+  model: glm-5.3-flash
+  max_tokens: 16384
+  language: Traditional Chinese
+  requests_per_minute: 10
+  rate_limit_max_retries: 5
+  rate_limit_backoff_seconds: 30
+  rate_limit_max_interval_seconds: 300
+  teaser_char_limit: 150
+  teaser_batch_size: 10
+  generation_kwargs:
+    temperature: 1.0
+    top_p: 0.95
+    seed: 114514
+
+embedding:
+  model: jinaai/jina-embeddings-v5-text-nano-retrieval
+  encode_kwargs:
+    task: retrieval
+    prompt_name: document
+
+executor:
+  categories: ["cs.LG", "stat.ML", "math.OC", "cs.AI"]
+  include_cross_list: false
+  send_empty: false
+  max_paper_num: 30
+  lookback_days: 3
+  state_file: state/recommended.json
+  history_days: 30
+  fulltext_paper_num: 15
+  fulltext_workers: 4
+  output_dir: output
+
+2026-09-25T07:04:49.9069624Z ##[endgroup]
+2026-09-25T07:04:49.9189027Z Use custom config: 
+2026-09-25T07:04:49.9205836Z zotero:
+2026-09-25T07:04:49.9206376Z   user_id: ${ZOTERO_ID}
+2026-09-25T07:04:49.9206877Z   api_key: ***MASKED***
+2026-09-25T07:04:49.9207762Z   include_path: null        # list of glob patterns, e.g. ["2026/survey/**"]; null = 整個庫
+2026-09-25T07:04:49.9208451Z   ignore_path: null         # 要排除的 collection, e.g. ["archive/**"]
+2026-09-25T07:04:49.9209108Z 
+2026-09-25T07:04:49.9209307Z email:
+2026-09-25T07:04:49.9209876Z   sender: ${SENDER}
+2026-09-25T07:04:49.9210395Z   receiver: ${RECEIVER}
+2026-09-25T07:04:49.9210855Z   sender_password: ***MASKED***
+2026-09-25T07:04:49.9211518Z   subject_prefix: Daily ArXiv Papers  # 信件主旨 = "<prefix> YYYY/MM/DD"
+2026-09-25T07:04:49.9212168Z   # smtp_server / smtp_port 不在這裡設：由 EMAIL_SMTP_SERVER/PORT（優先）
+2026-09-25T07:04:49.9212743Z   # 或 SMTP_SERVER/PORT secrets 提供（現為 Gmail smtp.gmail.com:465）
+2026-09-25T07:04:49.9213055Z 
+2026-09-25T07:04:49.9213158Z llm:
+2026-09-25T07:04:49.9213399Z   api_key: ***MASKED***
+2026-09-25T07:04:49.9213843Z   base_url: ***
+2026-09-25T07:04:49.9214107Z   model: glm-5.3-flash
+2026-09-25T07:04:49.9214394Z   max_tokens: ***MASKED***
+2026-09-25T07:04:49.9214697Z   language: Traditional Chinese
+2026-09-25T07:04:49.9215035Z   requests_per_minute: 10
+2026-09-25T07:04:49.9215376Z   rate_limit_max_retries: 5
+2026-09-25T07:04:49.9215687Z   rate_limit_backoff_seconds: 30
+2026-09-25T07:04:49.9216019Z   rate_limit_max_interval_seconds: 300
+2026-09-25T07:04:49.9216624Z   teaser_char_limit: 150
+2026-09-25T07:04:49.9216936Z   teaser_batch_size: 10
+2026-09-25T07:04:49.9217202Z   generation_kwargs:
+2026-09-25T07:04:49.9217451Z     temperature: 1.0
+2026-09-25T07:04:49.9217706Z     top_p: 0.95
+2026-09-25T07:04:49.9217935Z     seed: 114514
+2026-09-25T07:04:49.9218076Z 
+2026-09-25T07:04:49.9218169Z embedding:
+2026-09-25T07:04:49.9218475Z   model: jinaai/jina-embeddings-v5-text-nano-retrieval
+2026-09-25T07:04:49.9219180Z   encode_kwargs:
+2026-09-25T07:04:49.9219419Z     task: retrieval
+2026-09-25T07:04:49.9219665Z     prompt_name: document
+2026-09-25T07:04:49.9219834Z 
+2026-09-25T07:04:49.9219929Z executor:
+2026-09-25T07:04:49.9220200Z   categories: ["cs.LG", "stat.ML", "math.OC", "cs.AI"]
+2026-09-25T07:04:49.9220546Z   include_cross_list: false
+2026-09-25T07:04:49.9220805Z   send_empty: false
+2026-09-25T07:04:49.9221045Z   max_paper_num: 30
+2026-09-25T07:04:49.9221298Z   lookback_days: 3
+2026-09-25T07:04:49.9221617Z   state_file: state/recommended.json
+2026-09-25T07:04:49.9221922Z   history_days: 30
+2026-09-25T07:04:49.9222941Z   fulltext_paper_num: 15
+2026-09-25T07:04:49.9223411Z   fulltext_workers: 4
+2026-09-25T07:04:49.9223836Z   output_dir: output
+2026-09-25T07:04:49.9224086Z 
+2026-09-25T07:04:50.0355085Z Downloading cpython-3.13.15-linux-x86_64-gnu (download) (33.4MiB)
+2026-09-25T07:04:50.9900891Z  Downloaded cpython-3.13.15-linux-x86_64-gnu (download)
+2026-09-25T07:04:51.1445394Z Using CPython 3.13.15
+2026-09-25T07:04:51.1446308Z Creating virtual environment at: .venv
+2026-09-25T07:04:51.1727329Z    Building zotero-arxiv-daily @ file:///home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily
+2026-09-25T07:04:51.1878223Z Downloading transformers (10.2MiB)
+2026-09-25T07:04:51.1880538Z Downloading babel (9.7MiB)
+2026-09-25T07:04:51.1890129Z Downloading scikit-learn (8.5MiB)
+2026-09-25T07:04:51.1893040Z Downloading tokenizers (3.1MiB)
+2026-09-25T07:04:51.1894470Z Downloading pydantic-core (2.0MiB)
+2026-09-25T07:04:51.1896682Z Downloading networkx (2.0MiB)
+2026-09-25T07:04:51.1899201Z Downloading jedi (1.5MiB)
+2026-09-25T07:04:51.1909988Z Downloading pygments (1.2MiB)
+2026-09-25T07:04:51.1911404Z Downloading setuptools (1.0MiB)
+2026-09-25T07:04:51.1985535Z Downloading onnxruntime (16.4MiB)
+2026-09-25T07:04:51.1987541Z Downloading pymupdf-layout (15.1MiB)
+2026-09-25T07:04:51.1989308Z Downloading hf-xet (4.0MiB)
+2026-09-25T07:04:51.1990971Z Downloading sympy (6.0MiB)
+2026-09-25T07:04:51.1994019Z Downloading ruff (9.8MiB)
+2026-09-25T07:04:51.1999597Z Downloading lxml (5.0MiB)
+2026-09-25T07:04:51.2004516Z Downloading scipy (33.6MiB)
+2026-09-25T07:04:51.2006719Z Downloading numpy (15.8MiB)
+2026-09-25T07:04:51.2009613Z Downloading openai (1.1MiB)
+2026-09-25T07:04:51.2012306Z Downloading debugpy (4.1MiB)
+2026-09-25T07:04:51.2014644Z Downloading pymupdf (23.8MiB)
+2026-09-25T07:04:51.2017058Z Downloading torch (181.5MiB)
+2026-09-25T07:04:51.5128312Z  Downloaded setuptools
+2026-09-25T07:04:51.5458057Z  Downloaded pygments
+2026-09-25T07:04:51.5822453Z  Downloaded openai
+2026-09-25T07:04:51.6399912Z  Downloaded networkx
+2026-09-25T07:04:51.6401035Z  Downloaded pydantic-core
+2026-09-25T07:04:51.6700228Z  Downloaded jedi
+2026-09-25T07:04:51.7449488Z  Downloaded tokenizers
+2026-09-25T07:04:51.8771753Z  Downloaded hf-xet
+2026-09-25T07:04:51.8988154Z  Downloaded debugpy
+2026-09-25T07:04:51.9385313Z  Downloaded lxml
+2026-09-25T07:04:52.0440089Z  Downloaded sympy
+2026-09-25T07:04:52.1529814Z  Downloaded scikit-learn
+2026-09-25T07:04:52.2007274Z  Downloaded babel
+2026-09-25T07:04:52.2129813Z  Downloaded ruff
+2026-09-25T07:04:52.2748115Z  Downloaded transformers
+2026-09-25T07:04:52.3293555Z       Built zotero-arxiv-daily @ file:///home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily
+2026-09-25T07:04:52.3429887Z  Downloaded pymupdf-layout
+2026-09-25T07:04:52.4211630Z  Downloaded numpy
+2026-09-25T07:04:52.4214540Z  Downloaded onnxruntime
+2026-09-25T07:04:52.5019931Z  Downloaded pymupdf
+2026-09-25T07:04:52.5950083Z  Downloaded scipy
+2026-09-25T07:04:54.1595764Z  Downloaded torch
+2026-09-25T07:04:54.5008988Z Installed 110 packages in 340ms
+2026-09-25T07:04:56.2143054Z [0;93m2026-09-25 07:04:56.213809415 [W:onnxruntime:Default, device_discovery.cc:132 GetPciBusId] Skipping pci_bus_id for PCI path at "/sys/devices/LNXSYSTM:00/LNXSYBUS:00/ACPI0004:00/MSFT1000:00/5620e0c7-8062-4dce-aeb7-520c7ef76171" because filename ""5620e0c7-8062-4dce-aeb7-520c7ef76171"" dit not match expected pattern of [0-9a-f]+:[0-9a-f]+:[0-9a-f]+[.][0-9a-f]+[m
+2026-09-25T07:04:57.9200601Z Traceback (most recent call last):
+2026-09-25T07:04:57.9214648Z   File "/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/scripts/smoke_arxiv_teaser_email.py", line 81, in <module>
+2026-09-25T07:04:57.9215706Z     main()
+2026-09-25T07:04:57.9216029Z     ~~~~^^
+2026-09-25T07:04:57.9216936Z   File "/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/scripts/smoke_arxiv_teaser_email.py", line 77, in main
+2026-09-25T07:04:57.9217844Z     run(args.max_papers)
+2026-09-25T07:04:57.9218219Z     ~~~^^^^^^^^^^^^^^^^^
+2026-09-25T07:04:57.9219370Z   File "/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/scripts/smoke_arxiv_teaser_email.py", line 29, in run
+2026-09-25T07:04:57.9220749Z     config = load_config(REPO_ROOT / "config")
+2026-09-25T07:04:57.9221744Z   File "/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/src/zotero_arxiv_daily/config.py", line 189, in load_config
+2026-09-25T07:04:57.9222914Z     raise ConfigError(f"Missing required config values: {', '.join(absent)}")
+2026-09-25T07:04:57.9223916Z zotero_arxiv_daily.config.ConfigError: Missing required config values: email.smtp_server, email.smtp_port
+2026-09-25T07:04:58.2192954Z ##[error]Process completed with exit code 1.
+2026-09-25T07:04:58.2341586Z Post job cleanup.
+2026-09-25T07:04:58.3253255Z [command]/usr/bin/git version
+2026-09-25T07:04:58.3296725Z git version 2.55.0
+2026-09-25T07:04:58.3339131Z Temporarily overriding HOME='/home/runner/work/_temp/0f19a00a-c8ee-4cde-b94a-de6cf940cd71' before making global git config changes
+2026-09-25T07:04:58.3340627Z Adding repository directory to the temporary git global config as a safe directory
+2026-09-25T07:04:58.3346120Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily
+2026-09-25T07:04:58.3386351Z Removing SSH command configuration
+2026-09-25T07:04:58.3394300Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-09-25T07:04:58.3440421Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-09-25T07:04:58.3718958Z Removing HTTP extra header
+2026-09-25T07:04:58.3720824Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-09-25T07:04:58.3761689Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-09-25T07:04:58.4022063Z Removing includeIf entries pointing to credentials config files
+2026-09-25T07:04:58.4031251Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-09-25T07:04:58.4067128Z includeif.gitdir:/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/.git.path
+2026-09-25T07:04:58.4096739Z includeif.gitdir:/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/.git/worktrees/*.path
+2026-09-25T07:04:58.4117904Z includeif.gitdir:/github/workspace/.git.path
+2026-09-25T07:04:58.4119332Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-09-25T07:04:58.4122258Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/.git.path
+2026-09-25T07:04:58.4123858Z /home/runner/work/_temp/git-credentials-374f0425-8111-4d1e-b78b-f194bc8f043b.config
+2026-09-25T07:04:58.4127091Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/.git.path /home/runner/work/_temp/git-credentials-374f0425-8111-4d1e-b78b-f194bc8f043b.config
+2026-09-25T07:04:58.4171662Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/.git/worktrees/*.path
+2026-09-25T07:04:58.4220053Z /home/runner/work/_temp/git-credentials-374f0425-8111-4d1e-b78b-f194bc8f043b.config
+2026-09-25T07:04:58.4251709Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/zotero-arxiv-daily/zotero-arxiv-daily/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-374f0425-8111-4d1e-b78b-f194bc8f043b.config
+2026-09-25T07:04:58.4264590Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-09-25T07:04:58.4292330Z /github/runner_temp/git-credentials-374f0425-8111-4d1e-b78b-f194bc8f043b.config
+2026-09-25T07:04:58.4306815Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-374f0425-8111-4d1e-b78b-f194bc8f043b.config
+2026-09-25T07:04:58.4364798Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-09-25T07:04:58.4392368Z /github/runner_temp/git-credentials-374f0425-8111-4d1e-b78b-f194bc8f043b.config
+2026-09-25T07:04:58.4403298Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-374f0425-8111-4d1e-b78b-f194bc8f043b.config
+2026-09-25T07:04:58.4444147Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-09-25T07:04:58.4680289Z Removing credentials config '/home/runner/work/_temp/git-credentials-374f0425-8111-4d1e-b78b-f194bc8f043b.config'
+2026-09-25T07:04:58.4846106Z Cleaning up orphan processes

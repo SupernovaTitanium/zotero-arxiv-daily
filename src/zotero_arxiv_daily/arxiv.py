@@ -15,6 +15,7 @@ import ipaddress
 import multiprocessing
 import re
 import socket
+import ssl
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -81,11 +82,26 @@ def _resolve_public_ip(hostname: str) -> str:
     raise ValueError(f"No addresses resolved for {hostname}")
 
 
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """TLS connection pinned to a pre-resolved IP while SNI and certificate
+    verification still use the hostname (closing the DNS-rebinding window).
+    http.client has no server_hostname parameter, so connect() is overridden:
+    TCP goes to the validated IP, the TLS handshake names the real host."""
+
+    def __init__(self, ip: str, hostname: str, timeout: float):
+        super().__init__(ip, timeout=timeout)
+        self._sni_hostname = hostname
+        self._pinned_context = ssl.create_default_context()
+
+    def connect(self) -> None:
+        sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        self.sock = self._pinned_context.wrap_socket(sock, server_hostname=self._sni_hostname)
+
+
 def _https_get(url: str) -> tuple[http.client.HTTPConnection, http.client.HTTPResponse]:
     parsed = urlparse(_validate_url(url))
-    conn = http.client.HTTPSConnection(
-        _resolve_public_ip(parsed.hostname), 443, timeout=DOWNLOAD_TIMEOUT,
-        server_hostname=parsed.hostname,
+    conn = _PinnedHTTPSConnection(
+        _resolve_public_ip(parsed.hostname), parsed.hostname, DOWNLOAD_TIMEOUT
     )
     path = parsed.path or "/"
     if parsed.query:
