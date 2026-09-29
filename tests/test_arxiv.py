@@ -1,5 +1,9 @@
 """Tests for the arXiv module: OAI parsing, dedup keys, retrieval fallback."""
 
+import multiprocessing
+import time
+from types import SimpleNamespace
+
 import pytest
 
 from zotero_arxiv_daily import arxiv
@@ -146,3 +150,55 @@ def test_paper_dedup_keys():
     keys = paper.dedup_keys()
     assert "doi:10.1234/abc" in keys
     assert "sid:arxiv:2026.00001" in keys
+
+
+def _sleep_in_child() -> None:
+    time.sleep(20)
+
+
+def test_hard_timeout_path_kills_child():
+    result = arxiv._run_with_hard_timeout(
+        _sleep_in_child, (), timeout=0.5, operation="Test op", paper_title="t"
+    )
+    assert result is None
+    assert not multiprocessing.active_children()
+
+
+def test_success_path_kills_child_that_lingers(monkeypatch):
+    """A child that delivered its result but stays alive must be killed:
+    interpreter shutdown joins children without a timeout and would hang."""
+    delivered = SimpleNamespace(
+        get=lambda timeout: ("ok", "payload"), close=lambda: None, join_thread=lambda: None
+    )
+
+    class FakeProcess:
+        def __init__(self, target, args):
+            self.killed = False
+            self.join_calls = []
+            processes.append(self)
+
+        def start(self):
+            pass
+
+        def join(self, timeout=None):
+            self.join_calls.append(timeout)
+
+        def is_alive(self):
+            return not self.killed
+
+        def kill(self):
+            self.killed = True
+
+    processes: list[FakeProcess] = []
+    fake_ctx = SimpleNamespace(Queue=lambda: delivered, Process=FakeProcess)
+    monkeypatch.setattr(
+        arxiv,
+        "multiprocessing",
+        SimpleNamespace(get_all_start_methods=lambda: ["fork"], get_context=lambda name: fake_ctx),
+    )
+
+    result = arxiv._run_with_hard_timeout(lambda: "payload", (), timeout=5, operation="Test op", paper_title="t")
+    assert result == "payload"
+    assert len(processes) == 1
+    assert processes[0].killed
+    assert processes[0].join_calls[-1] is None

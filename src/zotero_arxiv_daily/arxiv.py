@@ -176,6 +176,12 @@ def _run_with_hard_timeout(
     process.join(5)
     result_queue.close()
     result_queue.join_thread()
+    if process.is_alive():
+        # multiprocessing joins remaining children with no timeout at
+        # interpreter exit, so a child that lingers past its result would
+        # hang the finished process silently.
+        process.kill()
+        process.join()
 
     if status == "ok":
         return payload
