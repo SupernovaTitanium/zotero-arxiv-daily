@@ -16,7 +16,6 @@ class Paper:
     abstract: str
     url: str
     pdf_url: str | None = None
-    full_text: str | None = None
     teaser: str | None = None
     score: float | None = None
     doi: str | None = None

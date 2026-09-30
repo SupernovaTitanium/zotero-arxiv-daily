@@ -65,7 +65,7 @@ def test_teaser_is_clipped_to_char_limit(monkeypatch, llm):
         return long_text
 
     monkeypatch.setattr(teaser_module, "_chat", stub_chat)
-    teaser = teaser_module.generate_teaser(object(), llm, "T", "A", None)
+    teaser = teaser_module.generate_teaser(object(), llm, "T", "A")
     assert len(teaser) == 10
 
 
@@ -88,7 +88,7 @@ def test_generation_kwargs_passed_and_stream_stripped(monkeypatch, llm, config):
     client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=stub_create))
     )
-    teaser = teaser_module.generate_teaser(client, llm, "T", "A", None)
+    teaser = teaser_module.generate_teaser(client, llm, "T", "A")
     assert teaser == "teaser"
     assert captured["temperature"] == 1.0
     assert captured["top_p"] == 0.95

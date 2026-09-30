@@ -44,14 +44,11 @@ def _clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit].rstrip() + "..."
 
 
-def _paper_context(title: str, abstract: str, full_text: str | None) -> str:
-    parts = [f"題目：{title or '[來源缺失]'}", f"摘要：{abstract or '[來源缺失]'}"]
-    if full_text:
-        parts.append(f"正文預覽：{full_text}")
-    return "\n\n".join(parts)
+def _paper_context(title: str, abstract: str) -> str:
+    return f"題目：{title or '[來源缺失]'}\n\n摘要：{abstract or '[來源缺失]'}"
 
 
-def generate_teaser(client: OpenAI, llm: LlmConfig, title: str, abstract: str, full_text: str | None) -> str:
+def generate_teaser(client: OpenAI, llm: LlmConfig, title: str, abstract: str) -> str:
     prompt = (
         "你是嚴謹的學術每日摘要編輯。請寫一段極短速覽。\n\n"
         "要求：\n"
@@ -62,7 +59,7 @@ def generate_teaser(client: OpenAI, llm: LlmConfig, title: str, abstract: str, f
         "- 不要使用 Markdown。\n"
         "- 只輸出摘要文字。\n\n"
         f"可用資料：\n"
-        f"{_paper_context(_clip(title, 500), _clip(abstract, 3000), _clip(full_text or '', 3000) or None)}"
+        f"{_paper_context(_clip(title, 500), _clip(abstract, 3000))}"
     )
     teaser = _chat(client, llm, "你是一個精簡的學術摘要專家。", prompt).strip()
     return teaser[: llm.teaser_char_limit].rstrip()
@@ -70,7 +67,7 @@ def generate_teaser(client: OpenAI, llm: LlmConfig, title: str, abstract: str, f
 
 def _teasers_for_batch(client: OpenAI, llm: LlmConfig, batch: list) -> dict[int, str]:
     lines = [
-        f"[{i}] " + _paper_context(_clip(p.title, 500), _clip(p.abstract or "", 2000), None)
+        f"[{i}] " + _paper_context(_clip(p.title, 500), _clip(p.abstract or "", 2000))
         for i, p in enumerate(batch)
     ]
     prompt = (
@@ -118,7 +115,7 @@ def generate_teasers_batch(client: OpenAI, llm: LlmConfig, papers: list) -> int:
         for i, paper in enumerate(batch):
             text = teasers.get(i)
             if not text:
-                text = generate_teaser(client, llm, paper.title, paper.abstract, paper.full_text)
+                text = generate_teaser(client, llm, paper.title, paper.abstract)
                 requests += 1
             paper.teaser = text
     return requests

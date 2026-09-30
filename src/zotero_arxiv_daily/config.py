@@ -118,8 +118,6 @@ class ExecutorConfig:
     preference_mute_weight: float = 1.5
     preference_grace_days: int = 5
     topic_threshold: float = 0.5
-    fulltext_paper_num: int = 30
-    fulltext_workers: int = 4
     embedding_cache_file: str | None = "state/corpus_embeddings.npz"
     output_dir: str | None = "output"
 
@@ -214,8 +212,6 @@ def load_config(config_dir: str | Path = "config") -> Config:
         preference_mute_weight=float(executor.get("preference_mute_weight", 1.5) or 1.5),
         preference_grace_days=int(executor.get("preference_grace_days", 5) or 5),
         topic_threshold=float(executor.get("topic_threshold", 0.5) or 0.5),
-        fulltext_paper_num=int(executor.get("fulltext_paper_num", 30) or 0),
-        fulltext_workers=int(executor.get("fulltext_workers", 4) or 4),
         embedding_cache_file=executor.get("embedding_cache_file") or None,
         output_dir=executor.get("output_dir") or None,
     )

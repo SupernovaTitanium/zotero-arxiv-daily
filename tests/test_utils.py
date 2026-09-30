@@ -1,11 +1,6 @@
-"""Tests for zotero_arxiv_daily.utils: glob_match, tex extraction, normalization."""
+"""Tests for zotero_arxiv_daily.utils: glob_match, normalization."""
 
-import tarfile
-import io
-
-import pytest
-
-from zotero_arxiv_daily.utils import glob_match, extract_tex_code_from_tar, _bm25_pick
+from zotero_arxiv_daily.utils import glob_match
 
 
 # ---------------------------------------------------------------------------
@@ -112,110 +107,6 @@ class TestGlobMatch:
         assert glob_match("dir/file.txt", "**/*.txt")
         assert glob_match("dir/subdir/file.txt", "**/*.txt")
         assert glob_match("dir/subdir/subsubdir/file.txt", "**/*.txt")
-
-
-# ---------------------------------------------------------------------------
-# extract_tex_code_from_tar
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture()
-def make_tar(tmp_path):
-    """Create a tar file with given files, auto-cleaned by tmp_path."""
-
-    def _make(files: dict[str, str]) -> str:
-        buf = io.BytesIO()
-        with tarfile.open(fileobj=buf, mode="w") as tar:
-            for name, content in files.items():
-                data = content.encode()
-                info = tarfile.TarInfo(name=name)
-                info.size = len(data)
-                tar.addfile(info, io.BytesIO(data))
-        path = tmp_path / "test.tar"
-        path.write_bytes(buf.getvalue())
-        return str(path)
-
-    return _make
-
-
-def test_extract_tex_single_file(make_tar):
-    path = make_tar({"main.tex": "\\begin{document}\nHello\n\\end{document}"})
-    result = extract_tex_code_from_tar(path, "test-paper")
-    assert result is not None
-    assert "Hello" in result["all"]
-
-
-def test_extract_tex_with_input_resolution(make_tar):
-    path = make_tar({
-        "main.tex": "\\begin{document}\n\\input{intro}\n\\end{document}",
-        "main.bbl": "",
-        "intro.tex": "This is the introduction.",
-    })
-    result = extract_tex_code_from_tar(path, "test-paper")
-    assert "This is the introduction." in result["all"]
-
-
-def test_extract_tex_no_tex_files(make_tar):
-    path = make_tar({"readme.md": "# Hello"})
-    result = extract_tex_code_from_tar(path, "test-paper")
-    assert result is None
-
-
-def test_extract_tex_not_a_tar(tmp_path):
-    path = tmp_path / "bad.tar"
-    path.write_bytes(b"this is not a tar file")
-    result = extract_tex_code_from_tar(str(path), "test-paper")
-    assert result is None
-
-
-def test_extract_tex_multiple_tex_no_bbl(make_tar):
-    path = make_tar({
-        "a.tex": "\\section{A}",
-        "b.tex": "\\begin{document}\nMain content\n\\end{document}",
-    })
-    result = extract_tex_code_from_tar(path, "test-paper")
-    assert result is not None
-    assert "Main content" in result["all"]
-
-
-def test_extract_tex_multiple_document_blocks_bm25(make_tar):
-    """When multiple tex files contain \\begin{document}, BM25 picks the one matching paper_title."""
-    path = make_tar({
-        "appendix.tex": "\\begin{document}\n\\title{Supplementary Material}\nAppendix stuff\n\\end{document}",
-        "main.tex": "\\begin{document}\n\\title{Quantum Entanglement in Neural Networks}\nReal content here\n\\end{document}",
-    })
-    result = extract_tex_code_from_tar(path, "test-paper", paper_title="Quantum Entanglement in Neural Networks")
-    assert result is not None
-    assert "Real content here" in result["all"]
-
-
-def test_extract_tex_multiple_document_blocks_no_title(make_tar):
-    """Without paper_title, falls back to the first candidate."""
-    path = make_tar({
-        "a.tex": "\\begin{document}\nFirst doc\n\\end{document}",
-        "b.tex": "\\begin{document}\nSecond doc\n\\end{document}",
-    })
-    result = extract_tex_code_from_tar(path, "test-paper")
-    assert result is not None
-    assert result["all"] is not None
-
-
-class TestBm25Pick:
-    def test_picks_best_match(self):
-        candidates = {
-            "a.tex": "This paper discusses cats and dogs in the wild",
-            "b.tex": "Quantum entanglement in neural network architectures",
-        }
-        assert _bm25_pick("Quantum entanglement neural networks", candidates) == "b.tex"
-
-    def test_single_candidate(self):
-        candidates = {"only.tex": "Some content here"}
-        assert _bm25_pick("anything", candidates) == "only.tex"
-
-    def test_empty_query_returns_first(self):
-        candidates = {"a.tex": "hello", "b.tex": "world"}
-        result = _bm25_pick("", candidates)
-        assert result in candidates
 
 
 # ---------------------------------------------------------------------------

@@ -40,7 +40,7 @@ def run(max_papers: int) -> None:
     llm_client = make_llm_client(config.llm)
     for paper in papers:
         logger.info(f"Generating teaser: {paper.title}")
-        teaser = generate_teaser(llm_client, config.llm, paper.title, paper.abstract, None)
+        teaser = generate_teaser(llm_client, config.llm, paper.title, paper.abstract)
         if not teaser:
             raise RuntimeError(f"Failed to generate teaser for {paper.url}")
         paper.teaser = teaser

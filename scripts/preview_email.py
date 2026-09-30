@@ -1,4 +1,4 @@
-"""Render a preview email without Zotero, network full-text fetches, or SMTP.
+"""Render a preview email without Zotero or SMTP.
 
 - Zotero corpus is faked in-process.
 - arXiv retrieval is real (metadata only).
@@ -113,7 +113,6 @@ def main() -> None:
 
     config = load_config(REPO_ROOT / "config")
     config.executor.max_paper_num = args.max_papers
-    config.executor.fulltext_paper_num = 0
     config.executor.output_dir = str(REPO_ROOT / "output")
     config.executor.preferences_file = None
 

@@ -83,7 +83,6 @@ def make_sample_paper(**overrides) -> Paper:
         abstract="This paper explores a novel approach to widget engineering.",
         url="https://arxiv.org/abs/2026.00001",
         pdf_url="https://arxiv.org/pdf/2026.00001",
-        full_text=None,
         teaser=None,
         score=None,
         source_id="2026.00001",

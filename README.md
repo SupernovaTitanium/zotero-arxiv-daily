@@ -134,7 +134,6 @@ executor:
   lookback_days: 3 # Days back to retrieve, so a failed run is caught up next run
   state_file: state/recommended.json
   preferences_file: preferences.yaml # Weekly-review boost/mute keywords
-  fulltext_paper_num: 30 # Top N papers get full-text fetching after ranking
 
 
 That's all! Now you can test the workflow by manually triggering it:

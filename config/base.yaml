@@ -51,7 +51,5 @@ executor:
   preference_mute_weight: 1.5 # Score penalty per matched mute keyword
   preference_grace_days: 5 # A presented recommendation younger than this never counts as ignored
   topic_threshold: 0.5 # Cosine similarity threshold for topic grouping
-  fulltext_paper_num: 30 # Top N papers get full-text fetching after ranking
-  fulltext_workers: 4 # Parallel full-text workers
   embedding_cache_file: state/corpus_embeddings.npz # Corpus vector cache; null disables
   output_dir: output # Rendered email + run summary, uploaded as artifact; null disables

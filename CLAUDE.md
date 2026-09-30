@@ -34,7 +34,7 @@ The app is a linear pipeline in `src/zotero_arxiv_daily/pipeline.py` (`run(confi
 1. **Fetch Zotero corpus** — `zotero.py`, via pyzotero; `include_path`/`ignore_path` glob filtering
 2. **Retrieve new arXiv papers** — `arxiv.py`: search API primary, OAI-PMH harvest fallback (arXiv hard-throttles runner IPs; do not add polling loops against arXiv)
 3. **Rank** — `embed.py`: local sentence-transformers embeddings (disk-cached in `state/corpus_embeddings.npz`, namespaced by model key), time-decayed corpus similarity, weekly-review preference boost/mute
-4. **Topic grouping + full text** — greedy clustering for the email; full text (LaTeX tar → HTML → PDF, subprocess hard timeout) only for the top papers
+4. **Topic grouping** — greedy clustering over the presented papers for the email
 5. **Generate teasers** — `teaser.py`: one batched LLM request per N papers, per-paper fallback; teaser mode only (no TLDR/affiliations/deep-digest paths)
 6. **Render + send email** — `email.py` + `mailer.py`; run outputs written before sending, dedup history (`history.py`) persisted only after the send succeeds
 

@@ -1,5 +1,4 @@
-"""arXiv retrieval: search API primary, OAI-PMH harvest fallback, plus
-full-text extraction (LaTeX tar -> arXiv HTML -> PDF) used after ranking.
+"""arXiv retrieval: search API primary, OAI-PMH harvest fallback.
 
 arXiv rate-limits GitHub runner IPs hard (429 for hours since ~2026-09-10),
 so this module is deliberately conservative: few, large, slow requests, empty
@@ -10,20 +9,11 @@ service as fallback. Do not add polling loops against arXiv.
 from __future__ import annotations
 
 import functools
-import http.client
-import ipaddress
-import multiprocessing
 import re
-import socket
-import ssl
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
-from queue import Empty
-from tempfile import NamedTemporaryFile, TemporaryDirectory
 from time import sleep
-from typing import Any, Callable, TypeVar
-from urllib.parse import urljoin, urlparse
+from typing import Any
 
 import requests
 from arxiv import ArxivError, Client, Result as ArxivResult, Search, SortCriterion
@@ -31,232 +21,17 @@ from loguru import logger
 
 from .config import Config
 from .paper import Paper
-from .utils import extract_markdown_from_pdf, extract_tex_code_from_tar, normalize_doi, normalize_title
+from .utils import normalize_doi, normalize_title
 
-T = TypeVar("T")
-
-DOWNLOAD_TIMEOUT = 90
-MAX_REDIRECT_HOPS = 3
-PDF_EXTRACT_TIMEOUT = 180
-TAR_EXTRACT_TIMEOUT = 180
 MAX_XML_BYTES = 64 * 1024 * 1024
 
 OAI_BASE_URL = "https://oaipmh.arxiv.org/oai"
 OAI_PAGE_DELAY_SECONDS = 3
 OAI_REQUEST_TIMEOUT = 90
-ARXIV_DOWNLOAD_HOSTS = {"arxiv.org", "www.arxiv.org", "export.arxiv.org"}
 _OAI_NS = {
     "oai": "http://www.openarchives.org/OAI/2.0/",
     "dc": "http://purl.org/dc/elements/1.1/",
 }
-
-
-# ---------------------------------------------------------------------------
-# Hardened arXiv downloads. Paper URLs come from arXiv API/OAI payloads, so the
-# boundary is: https scheme, arXiv host allowlist, TLS pinned to a pre-resolved
-# public IP (SNI + certificate verification still use the hostname, so DNS
-# rebinding cannot redirect the connection), and manual redirect following so
-# every hop re-passes the same checks.
-# ---------------------------------------------------------------------------
-
-def _validate_url(url: str) -> str:
-    parsed = urlparse(url)
-    if parsed.scheme != "https" or parsed.hostname not in ARXIV_DOWNLOAD_HOSTS:
-        raise ValueError(f"Refusing to fetch from unexpected URL: {url!r}")
-    return url
-
-
-def _resolve_public_ip(hostname: str) -> str:
-    for _, _, _, _, sockaddr in socket.getaddrinfo(hostname, 443):
-        ip = ipaddress.ip_address(sockaddr[0])
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_reserved
-            or ip.is_multicast
-            or ip.is_unspecified
-        ):
-            raise ValueError(f"Host {hostname} resolves to a non-public address ({ip}); refusing")
-        return str(ip)
-    raise ValueError(f"No addresses resolved for {hostname}")
-
-
-class _PinnedHTTPSConnection(http.client.HTTPSConnection):
-    """TLS connection pinned to a pre-resolved IP while SNI and certificate
-    verification still use the hostname (closing the DNS-rebinding window).
-    http.client has no server_hostname parameter, so connect() is overridden:
-    TCP goes to the validated IP, the TLS handshake names the real host."""
-
-    def __init__(self, ip: str, hostname: str, timeout: float):
-        super().__init__(ip, timeout=timeout)
-        self._sni_hostname = hostname
-        self._pinned_context = ssl.create_default_context()
-
-    def connect(self) -> None:
-        sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
-        self.sock = self._pinned_context.wrap_socket(sock, server_hostname=self._sni_hostname)
-
-
-def _https_get(url: str) -> tuple[http.client.HTTPConnection, http.client.HTTPResponse]:
-    parsed = urlparse(_validate_url(url))
-    conn = _PinnedHTTPSConnection(
-        _resolve_public_ip(parsed.hostname), parsed.hostname, DOWNLOAD_TIMEOUT
-    )
-    path = parsed.path or "/"
-    if parsed.query:
-        path += "?" + parsed.query
-    conn.request("GET", path, headers={"Host": parsed.hostname, "Accept": "*/*"})
-    return conn, conn.getresponse()
-
-
-def _fetch_bytes(url: str) -> bytes:
-    """GET an arXiv URL, following up to MAX_REDIRECT_HOPS redirects (each hop
-    re-validated) and returning the 200 body."""
-    current = url
-    for _ in range(MAX_REDIRECT_HOPS + 1):
-        conn, response = _https_get(current)
-        try:
-            if response.status in (301, 302, 303, 307, 308):
-                location = response.headers.get("Location", "")
-                conn.close()
-                if not location:
-                    raise RuntimeError(f"Redirect without Location from {current}")
-                current = urljoin(current, location)
-                continue
-            if response.status != 200:
-                raise RuntimeError(f"HTTP {response.status} from {current}")
-            return response.read()
-        finally:
-            conn.close()
-    raise RuntimeError(f"Too many redirects fetching {url}")
-
-
-# ---------------------------------------------------------------------------
-# Full-text extraction (run in subprocesses with a hard timeout: the PDF/TeX
-# parsers can hang on pathological inputs and there is no soft cancel).
-# ---------------------------------------------------------------------------
-
-def _download_into(url: str, temp_dir: str, suffix: str) -> Path:
-    """Fetch an arXiv file into ``temp_dir``; the filename is generated by
-    tempfile, so nothing about the URL can influence the path."""
-    body = _fetch_bytes(url)
-    with NamedTemporaryFile(dir=temp_dir, prefix="download_", suffix=suffix, delete=False) as file:
-        file.write(body)
-        return Path(file.name)
-
-
-def _run_in_subprocess(result_queue: Any, func: Callable[..., T | None], args: tuple) -> None:
-    try:
-        result_queue.put(("ok", func(*args)))
-    except Exception as exc:
-        result_queue.put(("error", f"{type(exc).__name__}: {exc}"))
-
-
-def _run_with_hard_timeout(
-    func: Callable[..., T | None], args: tuple, *, timeout: float, operation: str, paper_title: str
-) -> T | None:
-    start_methods = multiprocessing.get_all_start_methods()
-    context = multiprocessing.get_context("fork" if "fork" in start_methods else start_methods[0])
-    result_queue = context.Queue()
-    process = context.Process(target=_run_in_subprocess, args=(result_queue, func, args))
-    process.start()
-
-    try:
-        status, payload = result_queue.get(timeout=timeout)
-    except Empty:
-        if process.is_alive():
-            process.kill()
-        process.join(5)
-        result_queue.close()
-        result_queue.join_thread()
-        logger.warning(f"{operation} timed out for {paper_title} after {timeout} seconds")
-        return None
-
-    process.join(5)
-    result_queue.close()
-    result_queue.join_thread()
-    if process.is_alive():
-        # multiprocessing joins remaining children with no timeout at
-        # interpreter exit, so a child that lingers past its result would
-        # hang the finished process silently.
-        process.kill()
-        process.join()
-
-    if status == "ok":
-        return payload
-    logger.warning(f"{operation} failed for {paper_title}: {payload}")
-    return None
-
-
-def _extract_text_from_pdf_worker(pdf_url: str) -> str:
-    with TemporaryDirectory() as temp_dir:
-        path = _download_into(pdf_url, temp_dir, ".pdf")
-        return extract_markdown_from_pdf(str(path))
-
-
-def _extract_text_from_html_worker(html_url: str) -> str | None:
-    import trafilatura
-
-    body = _fetch_bytes(html_url).decode("utf-8", errors="replace")
-    text = trafilatura.extract(body, include_comments=False, include_tables=False)
-    if not text:
-        raise ValueError(f"No text extracted from {html_url}")
-    return text
-
-
-def _extract_text_from_tar_worker(source_url: str, paper_id: str, paper_title: str | None = None) -> str | None:
-    with TemporaryDirectory() as temp_dir:
-        path = _download_into(source_url, temp_dir, ".tar.gz")
-        file_contents = extract_tex_code_from_tar(str(path), paper_id, paper_title=paper_title)
-        if not file_contents or "all" not in file_contents or file_contents["all"] is None:
-            raise ValueError("Main tex file not found.")
-        return file_contents["all"]
-
-
-def _extract_text_from_tar(paper: Paper) -> str | None:
-    if not paper.source_id:
-        logger.warning(f"No source id available for {paper.title}")
-        return None
-    source_url = f"https://arxiv.org/e-print/{paper.source_id}"
-    return _run_with_hard_timeout(
-        _extract_text_from_tar_worker,
-        (source_url, paper.url, paper.title),
-        timeout=TAR_EXTRACT_TIMEOUT,
-        operation="Tar extraction",
-        paper_title=paper.title,
-    )
-
-
-def _extract_text_from_html(paper: Paper) -> str | None:
-    html_url = paper.url.replace("/abs/", "/html/")
-    try:
-        return _extract_text_from_html_worker(html_url)
-    except Exception as exc:
-        logger.warning(f"HTML extraction failed for {paper.title}: {exc}")
-        return None
-
-
-def _extract_text_from_pdf(paper: Paper) -> str | None:
-    if paper.pdf_url is None:
-        logger.warning(f"No PDF URL available for {paper.title}")
-        return None
-    return _run_with_hard_timeout(
-        _extract_text_from_pdf_worker,
-        (paper.pdf_url,),
-        timeout=PDF_EXTRACT_TIMEOUT,
-        operation="PDF extraction",
-        paper_title=paper.title,
-    )
-
-
-def fetch_full_text(paper: Paper) -> str | None:
-    full_text = _extract_text_from_tar(paper)
-    if full_text is None:
-        full_text = _extract_text_from_html(paper)
-    if full_text is None:
-        full_text = _extract_text_from_pdf(paper)
-    return full_text
 
 
 # ---------------------------------------------------------------------------
