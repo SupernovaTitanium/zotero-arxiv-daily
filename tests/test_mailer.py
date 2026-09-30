@@ -1,6 +1,7 @@
 """Tests for SMTP delivery: SSL vs STARTTLS by port, subject, envelope."""
 
 import smtplib
+import ssl
 
 import pytest
 
@@ -32,7 +33,7 @@ def test_starttls_used_for_non_465_ports(monkeypatch):
             calls.append("smtp")
             super().__init__(*a, **kw)
 
-        def starttls(self):
+        def starttls(self, **kwargs):
             calls.append("starttls")
 
     monkeypatch.setattr(smtplib, "SMTP", RecordingSMTP)
@@ -78,3 +79,37 @@ def test_login_failure_propagates(monkeypatch):
     monkeypatch.setattr(smtplib, "SMTP", FailingSMTP)
     with pytest.raises(smtplib.SMTPAuthenticationError):
         send_email(make_email_config(), "<html>x</html>")
+
+
+def test_ssl_construction_gets_timeout_and_verified_context(monkeypatch):
+    kwargs_seen = {}
+    StubSMTP = make_stub_smtp([])
+
+    class RecordingSSL(StubSMTP):
+        def __init__(self, *args, **kwargs):
+            kwargs_seen.update(kwargs)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(smtplib, "SMTP_SSL", RecordingSSL)
+    send_email(make_email_config(smtp_port=465), "<html>x</html>")
+    assert kwargs_seen["timeout"] == 60
+    assert kwargs_seen["context"].verify_mode == ssl.CERT_REQUIRED
+
+
+def test_starttls_gets_verified_context(monkeypatch):
+    kwargs_seen = {}
+    starttls_kwargs = {}
+    StubSMTP = make_stub_smtp([])
+
+    class RecordingSMTP(StubSMTP):
+        def __init__(self, *args, **kwargs):
+            kwargs_seen.update(kwargs)
+            super().__init__(*args, **kwargs)
+
+        def starttls(self, **kwargs):
+            starttls_kwargs.update(kwargs)
+
+    monkeypatch.setattr(smtplib, "SMTP", RecordingSMTP)
+    send_email(make_email_config(smtp_port=587), "<html>x</html>")
+    assert kwargs_seen["timeout"] == 60
+    assert starttls_kwargs["context"].check_hostname is True

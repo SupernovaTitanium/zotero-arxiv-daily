@@ -26,8 +26,9 @@ class Paper:
         keys = []
         if self.doi:
             keys.append("doi:" + normalize_doi(self.doi))
-        if self.title:
-            keys.append("title:" + normalize_title(self.title))
+        normalized_title = normalize_title(self.title)
+        if normalized_title:
+            keys.append("title:" + normalized_title)
         if self.source_id:
             keys.append(f"sid:{self.source}:{self.source_id}")
         return keys
@@ -45,6 +46,7 @@ class CorpusPaper:
         keys = []
         if self.doi:
             keys.append("doi:" + normalize_doi(self.doi))
-        if self.title:
-            keys.append("title:" + normalize_title(self.title))
+        normalized_title = normalize_title(self.title)
+        if normalized_title:
+            keys.append("title:" + normalized_title)
         return keys

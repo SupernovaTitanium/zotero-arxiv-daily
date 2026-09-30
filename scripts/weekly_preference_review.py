@@ -30,7 +30,6 @@ from zotero_arxiv_daily.preferences import (  # noqa: E402
     parse_review_response,
     save_preferences,
 )
-from zotero_arxiv_daily.rate_limit import rate_limit_openai_client  # noqa: E402
 from zotero_arxiv_daily.teaser import make_llm_client  # noqa: E402
 from zotero_arxiv_daily.zotero import fetch_corpus  # noqa: E402
 
@@ -61,10 +60,7 @@ def main() -> None:
         logger.info("Not enough evidence (<5 papers) to update preferences; keeping the existing file")
         return
 
-    client = rate_limit_openai_client(
-        make_llm_client(config.llm),
-        config.llm.requests_per_minute,
-    )
+    client = make_llm_client(config.llm)
 
     def _chat(messages: list[dict]) -> str:
         extra = {k: v for k, v in config.llm.generation_kwargs.items() if k != "stream"}

@@ -87,13 +87,14 @@ class LocalEmbedder:
     def __init__(self, model: str, encode_kwargs: dict | None = None):
         self.model = model
         self.encode_kwargs = encode_kwargs or {}
+        self._model = None
 
     def model_cache_key(self) -> str:
         # Keep this string stable: it namespaces the on-disk corpus cache.
         params = ",".join(f"{k}={v}" for k, v in sorted(self.encode_kwargs.items()))
         return f"local|{self.model}|{params}"
 
-    def _encoder(self):
+    def _load_model(self):
         from sentence_transformers import SentenceTransformer
         from transformers.utils import logging as transformers_logging
         from huggingface_hub.utils import logging as hf_logging
@@ -105,6 +106,11 @@ class LocalEmbedder:
         logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
         warnings.filterwarnings("ignore", category=FutureWarning)
         return SentenceTransformer(self.model, trust_remote_code=True)
+
+    def _encoder(self):
+        if self._model is None:
+            self._model = self._load_model()
+        return self._model
 
     def embed(self, texts: list[str]) -> np.ndarray:
         encoder = self._encoder()

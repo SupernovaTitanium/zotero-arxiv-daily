@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import smtplib
+import ssl
 from email.header import Header
 from email.mime.text import MIMEText
 from email.utils import formataddr
@@ -11,6 +12,8 @@ from email.utils import formataddr
 from loguru import logger
 
 from .config import EmailConfig
+
+SMTP_TIMEOUT_SECONDS = 60
 
 
 def send_email(email: EmailConfig, html: str) -> None:
@@ -20,11 +23,14 @@ def send_email(email: EmailConfig, html: str) -> None:
     today = datetime.datetime.now().strftime("%Y/%m/%d")
     msg["Subject"] = Header(f"{email.subject_prefix} {today}", "utf-8").encode()
 
+    context = ssl.create_default_context()
     if int(email.smtp_port) == 465:
-        server: smtplib.SMTP = smtplib.SMTP_SSL(email.smtp_server, email.smtp_port)
+        server: smtplib.SMTP = smtplib.SMTP_SSL(
+            email.smtp_server, email.smtp_port, timeout=SMTP_TIMEOUT_SECONDS, context=context
+        )
     else:
-        server = smtplib.SMTP(email.smtp_server, email.smtp_port)
-        server.starttls()
+        server = smtplib.SMTP(email.smtp_server, email.smtp_port, timeout=SMTP_TIMEOUT_SECONDS)
+        server.starttls(context=context)
     try:
         server.login(email.sender, email.sender_password)
         server.sendmail(email.sender, [email.receiver], msg.as_string())

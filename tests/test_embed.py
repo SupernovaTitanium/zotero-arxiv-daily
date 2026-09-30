@@ -103,3 +103,23 @@ def test_assign_topics_handles_embedder_failure(config):
     papers = [make_sample_paper(title="t", abstract="a")]
     ranker.assign_topics(papers)  # must not raise
     assert papers[0].topic is None
+
+
+def test_model_is_loaded_once(monkeypatch):
+    from zotero_arxiv_daily.embed import LocalEmbedder
+
+    loads = []
+
+    class FakeEncoder:
+        def encode(self, texts, **kwargs):
+            return np.zeros((len(texts), 4), dtype=np.float32)
+
+    def fake_load(self):
+        loads.append(1)
+        return FakeEncoder()
+
+    monkeypatch.setattr(LocalEmbedder, "_load_model", fake_load)
+    embedder = LocalEmbedder("fake-model")
+    embedder.embed(["a"])
+    embedder.embed(["b", "c"])
+    assert len(loads) == 1

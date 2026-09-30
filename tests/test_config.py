@@ -125,3 +125,32 @@ def test_include_path_must_be_list(tmp_path, env):
     data = {**BASE, "zotero": {**BASE["zotero"], "include_path": "2026/survey/**"}}
     with pytest.raises(ConfigError, match="include_path"):
         load_config(write_config(tmp_path, data))
+
+
+def test_explicit_zero_values_are_kept(tmp_path, env):
+    data = {
+        **BASE,
+        "executor": {
+            **BASE["executor"],
+            "history_days": 0,
+            "topic_threshold": 0,
+            "preference_mute_weight": 0,
+            "preference_grace_days": 0,
+        },
+        "llm": {**BASE["llm"], "rate_limit_max_retries": 0},
+    }
+    config = load_config(write_config(tmp_path, data))
+    assert config.executor.history_days == 0
+    assert config.executor.topic_threshold == 0
+    assert config.executor.preference_mute_weight == 0
+    assert config.executor.preference_grace_days == 0
+    assert config.llm.rate_limit_max_retries == 0
+
+
+def test_unset_values_use_defaults(tmp_path, env):
+    config = load_config(write_config(tmp_path, BASE))
+    assert config.executor.history_days == 30
+    assert config.executor.topic_threshold == 0.5
+    assert config.executor.preference_mute_weight == 1.5
+    assert config.executor.preference_grace_days == 5
+    assert config.llm.rate_limit_max_retries == 5

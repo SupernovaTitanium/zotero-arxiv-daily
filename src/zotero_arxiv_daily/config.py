@@ -68,6 +68,13 @@ def _env_int(names: list[str]) -> int | None:
     return None
 
 
+def _value(section: dict, key: str, default):
+    """Config value with a default only when the key is absent, null or empty;
+    an explicit 0 is a real value."""
+    value = section.get(key)
+    return default if value is None or value == "" else value
+
+
 @dataclass
 class ZoteroConfig:
     user_id: str
@@ -206,12 +213,12 @@ def load_config(config_dir: str | Path = "config") -> Config:
         max_paper_num=max_paper if max_paper is not None else int(executor.get("max_paper_num", 100)),
         lookback_days=lookback if lookback is not None else int(executor.get("lookback_days", 3)),
         state_file=executor.get("state_file") or None,
-        history_days=int(executor.get("history_days", 30) or 30),
+        history_days=int(_value(executor, "history_days", 30)),
         preferences_file=executor.get("preferences_file") or None,
-        preference_boost_weight=float(executor.get("preference_boost_weight", 1.0) or 1.0),
-        preference_mute_weight=float(executor.get("preference_mute_weight", 1.5) or 1.5),
-        preference_grace_days=int(executor.get("preference_grace_days", 5) or 5),
-        topic_threshold=float(executor.get("topic_threshold", 0.5) or 0.5),
+        preference_boost_weight=float(_value(executor, "preference_boost_weight", 1.0)),
+        preference_mute_weight=float(_value(executor, "preference_mute_weight", 1.5)),
+        preference_grace_days=int(_value(executor, "preference_grace_days", 5)),
+        topic_threshold=float(_value(executor, "topic_threshold", 0.5)),
         embedding_cache_file=executor.get("embedding_cache_file") or None,
         output_dir=executor.get("output_dir") or None,
     )
@@ -240,8 +247,8 @@ def load_config(config_dir: str | Path = "config") -> Config:
             max_tokens=int(llm.get("max_tokens", 16384) or 16384),
             language=llm.get("language") or "Traditional Chinese",
             requests_per_minute=int(llm.get("requests_per_minute", 10) or 0),
-            rate_limit_max_retries=int(llm.get("rate_limit_max_retries", 5) or 5),
-            rate_limit_backoff_seconds=int(llm.get("rate_limit_backoff_seconds", 30) or 30),
+            rate_limit_max_retries=int(_value(llm, "rate_limit_max_retries", 5)),
+            rate_limit_backoff_seconds=int(_value(llm, "rate_limit_backoff_seconds", 30)),
             rate_limit_max_interval_seconds=int(llm.get("rate_limit_max_interval_seconds", 300) or 300),
             teaser_char_limit=int(llm.get("teaser_char_limit", 150) or 150),
             teaser_batch_size=int(llm.get("teaser_batch_size", 10) or 1),

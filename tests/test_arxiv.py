@@ -1,6 +1,10 @@
 """Tests for the arXiv module: OAI parsing, dedup keys, retrieval fallback."""
 
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+
 import pytest
+from arxiv import HTTPError as ArxivHTTPError
 
 from zotero_arxiv_daily import arxiv
 from tests.canned_responses import make_sample_paper
@@ -146,3 +150,40 @@ def test_paper_dedup_keys():
     keys = paper.dedup_keys()
     assert "doi:10.1234/abc" in keys
     assert "sid:arxiv:2026.00001" in keys
+
+
+class _FakeClient:
+    def __init__(self, error):
+        self._error = error
+        self._session = SimpleNamespace(request=lambda *a, **kw: None)
+
+    def results(self, search):
+        raise self._error
+
+
+def test_search_api_4xx_raises_immediately(monkeypatch):
+    monkeypatch.setattr(arxiv, "Client", lambda **kw: _FakeClient(ArxivHTTPError("u", 0, 406)))
+    sleep_calls = []
+    monkeypatch.setattr(arxiv, "sleep", lambda seconds: sleep_calls.append(seconds))
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(days=3)
+    with pytest.raises(RuntimeError, match="not retrying"):
+        arxiv._papers_from_search_api(["cs.AI"], False, 3, start, now)
+    assert sleep_calls == []
+
+
+def test_search_api_429_still_retries(monkeypatch):
+    monkeypatch.setattr(arxiv, "Client", lambda **kw: _FakeClient(ArxivHTTPError("u", 0, 429)))
+    sleep_calls = []
+    monkeypatch.setattr(arxiv, "sleep", lambda seconds: sleep_calls.append(seconds))
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(days=3)
+    with pytest.raises(RuntimeError, match="failed after 5 attempts"):
+        arxiv._papers_from_search_api(["cs.AI"], False, 3, start, now)
+    assert len(sleep_calls) == 4
+
+
+def test_non_ascii_title_produces_no_title_key():
+    assert not [k for k in make_sample_paper(title="深度學習", doi=None).dedup_keys() if k.startswith("title:")]
+    assert "sid:arxiv:2026.00001" in make_sample_paper(title="深度學習", doi=None).dedup_keys()
+    assert "title:deeplearning" in make_sample_paper(title="Deep Learning").dedup_keys()

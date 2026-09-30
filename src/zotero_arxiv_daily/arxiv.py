@@ -16,7 +16,7 @@ from time import sleep
 from typing import Any
 
 import requests
-from arxiv import ArxivError, Client, Result as ArxivResult, Search, SortCriterion
+from arxiv import ArxivError, Client, HTTPError as ArxivHTTPError, Result as ArxivResult, Search, SortCriterion
 from loguru import logger
 
 from .config import Config
@@ -119,8 +119,9 @@ def _raw_keys(raw_paper: ArxivResult) -> list[str]:
     keys = []
     if raw_paper.doi:
         keys.append("doi:" + normalize_doi(raw_paper.doi))
-    if raw_paper.title:
-        keys.append("title:" + normalize_title(raw_paper.title))
+    normalized_title = normalize_title(raw_paper.title)
+    if normalized_title:
+        keys.append("title:" + normalized_title)
     keys.append("sid:arxiv:" + _short_id(raw_paper.entry_id))
     return keys
 
@@ -168,6 +169,10 @@ def _papers_from_search_api(
             ]
             last_error = None
         except (ArxivError, requests.exceptions.RequestException) as exc:
+            if isinstance(exc, ArxivHTTPError) and 400 <= exc.status < 500 and exc.status != 429:
+                raise RuntimeError(
+                    f"arXiv search API rejected the request (HTTP {exc.status}); not retrying: {exc}"
+                ) from exc
             raw_papers = []
             last_error = f"{type(exc).__name__}: {exc}"
         if raw_papers:
