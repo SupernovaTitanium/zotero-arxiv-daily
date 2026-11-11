@@ -139,16 +139,12 @@ def test_explicit_zero_values_are_kept(tmp_path, env):
             **BASE["executor"],
             "history_days": 0,
             "topic_threshold": 0,
-            "preference_mute_weight": 0,
-            "preference_grace_days": 0,
         },
         "llm": {**BASE["llm"], "rate_limit_max_retries": 0},
     }
     config = load_config(write_config(tmp_path, data))
     assert config.executor.history_days == 0
     assert config.executor.topic_threshold == 0
-    assert config.executor.preference_mute_weight == 0
-    assert config.executor.preference_grace_days == 0
     assert config.llm.rate_limit_max_retries == 0
 
 
@@ -162,8 +158,6 @@ def test_unset_values_use_defaults(tmp_path, env):
     config = load_config(write_config(tmp_path, BASE))
     assert config.executor.history_days == 30
     assert config.executor.topic_threshold == 0.5
-    assert config.executor.preference_mute_weight == 2.25
-    assert config.executor.preference_grace_days == 5
     assert config.llm.rate_limit_max_retries == 5
 
 
@@ -180,7 +174,6 @@ def test_local_example_forwards_exact_model_and_reasoning(tmp_path, env, monkeyp
     assert config.executor.max_paper_num == 100
     assert config.executor.state_file == "state/recommended.json"
     assert config.executor.embedding_cache_file == "state/corpus_embeddings.npz"
-    assert config.executor.preferences_file == "preferences.yaml"
 
     captured = {}
 

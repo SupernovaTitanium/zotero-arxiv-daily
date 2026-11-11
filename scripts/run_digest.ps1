@@ -118,8 +118,8 @@ function Send-Workspace($name, [bool]$withHistory) {
     if ($withHistory -and (Test-Path -LiteralPath (Join-Path $repo 'state\recommended.json'))) {
         $files += 'state/recommended.json'
     }
-    foreach ($optional in 'state/corpus_embeddings.npz', 'preferences.yaml') {
-        if (Test-Path -LiteralPath (Join-Path $repo $optional)) { $files += $optional }
+    if (Test-Path -LiteralPath (Join-Path $repo 'state\corpus_embeddings.npz')) {
+        $files += 'state/corpus_embeddings.npz'
     }
     $pushTar = Join-Path $env:TEMP ('zotero-arxiv-push-{0}.tar' -f $PID)
     try {

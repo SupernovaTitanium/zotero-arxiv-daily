@@ -41,7 +41,6 @@ def _base_config():
         executor=ExecutorConfig(
             categories=["cs.AI", "cs.CV"],
             state_file=None,
-            preferences_file=None,
             embedding_cache_file=None,
             output_dir=None,
         ),

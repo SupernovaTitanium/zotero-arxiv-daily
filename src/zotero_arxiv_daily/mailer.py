@@ -28,7 +28,7 @@ def send_email(email: EmailConfig, html: str, subject: str | None = None) -> Non
     """Send ``html`` to the configured receiver; ``subject`` replaces the
     usual "<prefix> <date>" subject."""
     msg = MIMEText(html, "html", "utf-8")
-    msg["From"] = formataddr(("Github Action", email.sender))
+    msg["From"] = formataddr((email.subject_prefix, email.sender))
     msg["To"] = formataddr(("You", email.receiver))
     today = datetime.datetime.now().strftime("%Y/%m/%d")
     msg["Subject"] = Header(subject or f"{email.subject_prefix} {today}", "utf-8").encode()

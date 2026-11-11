@@ -47,10 +47,6 @@ executor:
   lookback_days: 3 # Days back to retrieve, so a failed run is caught up next run
   state_file: state/recommended.json # Dedup history; null disables
   history_days: 30 # Days of dedup history to keep
-  preferences_file: preferences.yaml # Weekly-review boost/mute keywords; null disables
-  preference_boost_weight: 1.5 # Score bonus per matched boost keyword (scores span about 1.7 from rank 1 to rank 100)
-  preference_mute_weight: 2.25 # Score penalty per matched mute keyword
-  preference_grace_days: 5 # A presented recommendation younger than this never counts as ignored
   topic_threshold: 0.5 # Cosine similarity threshold for topic grouping
   embedding_cache_file: state/corpus_embeddings.npz # Corpus vector cache; null disables
   output_dir: output # Rendered email + run summary; null disables

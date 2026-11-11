@@ -1,6 +1,6 @@
 """Embedding-based ranking: local sentence-transformers embeddings with a
-disk cache, similarity to the nearest corpus papers, weekly-review preference boosts,
-and greedy topic clustering for the email."""
+disk cache, similarity to the nearest corpus papers, and greedy topic
+clustering for the email."""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from loguru import logger
 
 from .config import Config
 from .paper import CorpusPaper, Paper
-from .preferences import Preferences, apply_preferences
 
 
 # ---------------------------------------------------------------------------
@@ -197,14 +196,6 @@ class Ranker:
         for score, candidate in zip(scores, candidates):
             candidate.score = float(score)
         return sorted(candidates, key=lambda x: x.score if x.score is not None else 0.0, reverse=True)
-
-    def apply_preferences(self, papers: list[Paper], prefs: Preferences) -> list[Paper]:
-        executor = self.config.executor
-        before = [p.title for p in papers[:5]]
-        apply_preferences(papers, prefs, executor.preference_boost_weight, executor.preference_mute_weight)
-        if [p.title for p in papers[:5]] != before:
-            logger.info(f"Preferences reordered top papers (boost={prefs.boost}, mute={prefs.mute})")
-        return papers
 
     def assign_topics(self, papers: list[Paper]) -> None:
         """Greedy threshold clustering over candidate embeddings; clusters with

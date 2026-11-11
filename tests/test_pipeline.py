@@ -46,9 +46,6 @@ def stubbed_pipeline(monkeypatch, config, tmp_path):
         def rank(self, candidates, corpus):
             return sorted(candidates, key=lambda p: p.score or 0.0, reverse=True)
 
-        def apply_preferences(self, ranked, prefs):
-            return ranked
-
         def assign_topics(self, presented):
             presented[0].topic = "Stub Topic"
 

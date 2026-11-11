@@ -90,7 +90,6 @@ executor:
   max_paper_num: 100 # Papers presented in the email
   lookback_days: 3 # Days back to retrieve, so a failed run is caught up next run
   state_file: state/recommended.json
-  preferences_file: preferences.yaml # Weekly-review boost/mute keywords
 ```
 
 ### Local Running
@@ -108,7 +107,7 @@ uv run python -m zotero_arxiv_daily.main
 入口 `scripts/run_digest.ps1` 在本機啟動，依序選擇執行主機：Light1、Light2，兩台都不可用時才在本機執行。每台遠端主機都在 `127.0.0.1:10100` 跑自己的 opencodex 代理，`config/custom.yaml` 的端點因此不必改。
 
 - **選主機**：以 SSH（`C:\Windows\System32\OpenSSH\ssh.exe`，金鑰 `id_ed25519_light1` / `id_ed25519-remote-ssh`）探測代理健康（`/health` 回 200）、`uv` 存在、CPU 負載低於 90%、可用記憶體至少 3 GB；連線失敗（ssh 結束碼 255）重試一次。
-- **推送**：把 `src`、`scripts/remote_entry.py`、`config/base.yaml`、`config/custom.yaml`、`pyproject.toml`、`uv.lock`、`.python-version`、`state/recommended.json`、`state/corpus_embeddings.npz`（及存在時的 `preferences.yaml`）打包複製到遠端 `D:\zotero-arxiv-daily`，清掉遠端舊的 `src`、`state`、`output` 後解開，只在 `uv.lock` 與上次同步時不同時執行 `uv sync --frozen --no-dev --no-install-project`（依 `uv.lock` 的 CPU 版 PyTorch）。Light1 的 CPU 常被其他卸載工作占滿（CPU 嵌入實測每篇約 5 秒），因此同步後改裝 CUDA 版 `torch==2.11.0+cu128` 用其 RTX 4060；Light2 維持 CPU 版。改變某台的 PyTorch 版本後須刪除其 `.venv`。推送或同步失敗時改試下一台，因為此時尚未執行。
+- **推送**：把 `src`、`scripts/remote_entry.py`、`config/base.yaml`、`config/custom.yaml`、`pyproject.toml`、`uv.lock`、`.python-version`、`state/recommended.json`、`state/corpus_embeddings.npz`打包複製到遠端 `D:\zotero-arxiv-daily`，清掉遠端舊的 `src`、`state`、`output` 後解開，只在 `uv.lock` 與上次同步時不同時執行 `uv sync --frozen --no-dev --no-install-project`（依 `uv.lock` 的 CPU 版 PyTorch）。Light1 的 CPU 常被其他卸載工作占滿（CPU 嵌入實測每篇約 5 秒），因此同步後改裝 CUDA 版 `torch==2.11.0+cu128` 用其 RTX 4060；Light2 維持 CPU 版。改變某台的 PyTorch 版本後須刪除其 `.venv`。推送或同步失敗時改試下一台，因為此時尚未執行。
 - **憑證**：`config/local.env.json` 只經 SSH 標準輸入交給 `scripts/remote_entry.py`，載入該程序的環境後即執行，不寫入遠端磁碟。
 - **執行**：遠端輸出即時寫入本機日誌。開始前寫入 `state/remote-run.json` 記下主機；成功後把遠端的 `state` 與 `output` 拉回（`recommended.json` 以原子取代），再刪除該記號。遠端執行失敗不改到別台重跑，因為可能已寄出郵件或失敗通知；拉回失敗時結束碼為 `3`，下次執行開始前會先從記號上的主機補拉。
 - **本機備援**：使用 `C:\Users\light\venvs\zotero-arxiv-daily-cuda\Scripts\python.exe`（Python 3.13、CUDA 版 PyTorch `2.11.0+cu128`），需本機代理健康。若需重建：`uv venv --python C:\Python313\python.exe <路徑>`，先用 `--index-url https://download.pytorch.org/whl/cu128` 安裝 `torch==2.11.0`，再依 `uv.lock` 的版本安裝其餘依賴。
@@ -130,7 +129,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Users\light\sideproj
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Users\light\sideproject\zotero-arxiv-daily\scripts\run_digest.ps1" -TestHost Light2
 ```
 
-入口使用 `state/local-run.lock` 的獨占檔案鎖避免重疊執行，並傳回執行的結束碼；前置檢查失敗回傳 `1`。鎖檔存在不代表仍在執行。保留 `state/recommended.json`、`state/corpus_embeddings.npz` 與 `preferences.yaml`；不要為了重跑刪除歷史。`DEBUG`、`MAX_PAPER_NUM`、`LOOKBACK_DAYS` 等環境覆寫只在本機備援時有效。
+入口使用 `state/local-run.lock` 的獨占檔案鎖避免重疊執行，並傳回執行的結束碼；前置檢查失敗回傳 `1`。鎖檔存在不代表仍在執行。保留 `state/recommended.json` 與 `state/corpus_embeddings.npz`；不要為了重跑刪除歷史。`DEBUG`、`MAX_PAPER_NUM`、`LOOKBACK_DAYS` 等環境覆寫只在本機備援時有效。
 
 日誌位於 `C:\Users\light\sideproject\zotero-arxiv-daily\logs\digest-yyyyMMdd-HHmmss-fff-PID.log`，每行使用本機時間，末行為 `runner finished, exit=N`。
 

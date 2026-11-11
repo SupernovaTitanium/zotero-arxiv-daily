@@ -120,13 +120,6 @@ class ExecutorConfig:
     lookback_days: int = 3
     state_file: str | None = "state/recommended.json"
     history_days: int = 30
-    preferences_file: str | None = "preferences.yaml"
-    # Added to a score whose spread from rank 1 to rank 100 is about 1.7 on a
-    # 645-paper day: one boost hit lifts a median paper to about rank 15, one
-    # mute hit drops the top paper out of the first 100.
-    preference_boost_weight: float = 1.5
-    preference_mute_weight: float = 2.25
-    preference_grace_days: int = 5
     topic_threshold: float = 0.5
     embedding_cache_file: str | None = "state/corpus_embeddings.npz"
     output_dir: str | None = "output"
@@ -226,10 +219,6 @@ def load_config(config_dir: str | Path = "config") -> Config:
         lookback_days=lookback if lookback is not None else int(executor.get("lookback_days", 3)),
         state_file=executor.get("state_file") or None,
         history_days=int(_value(executor, "history_days", 30)),
-        preferences_file=executor.get("preferences_file") or None,
-        preference_boost_weight=float(_value(executor, "preference_boost_weight", 1.5)),
-        preference_mute_weight=float(_value(executor, "preference_mute_weight", 2.25)),
-        preference_grace_days=int(_value(executor, "preference_grace_days", 5)),
         topic_threshold=float(_value(executor, "topic_threshold", 0.5)),
         embedding_cache_file=executor.get("embedding_cache_file") or None,
         output_dir=executor.get("output_dir") or None,

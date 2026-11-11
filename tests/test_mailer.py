@@ -2,6 +2,8 @@
 
 import smtplib
 import ssl
+from email import message_from_string
+from email.header import decode_header, make_header
 
 import pytest
 
@@ -70,14 +72,16 @@ def test_envelope_and_subject(monkeypatch):
     assert "text/html" in body
     # Subject is MIME-encoded, so spaces may render as underscores
     assert "My_Digest" in body
+    # The sender is named after the digest, not the retired GitHub workflow.
+    assert message_from_string(body)["From"] == "My Digest <test@example.com>"
 
 
 def test_subject_can_be_replaced(monkeypatch):
     sent = []
     monkeypatch.setattr(smtplib, "SMTP", make_stub_smtp(sent))
     send_email(make_email_config(), "<html>x</html>", subject="Digest failed")
-    assert "Digest_failed" in sent[0][2] or "Digest failed" in sent[0][2]
-    assert "Daily" not in sent[0][2]
+    subject = message_from_string(sent[0][2])["Subject"]
+    assert str(make_header(decode_header(subject))) == "Digest failed"
 
 
 def test_login_failure_propagates_without_another_attempt(monkeypatch):

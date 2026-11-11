@@ -2,9 +2,7 @@
 
 Format (``{"papers": {primary_key: entry}}``) stores, per paper: the day it
 was processed, its title and an abstract snippet, whether it was presented in
-the email, and all of its dedup keys. This lets the weekly preference review
-tell "recommended but never saved" (negative signal) apart from "recommended
-and later added to Zotero" (positive signal) without any extra clicks.
+the email, and all of its dedup keys.
 """
 
 from __future__ import annotations

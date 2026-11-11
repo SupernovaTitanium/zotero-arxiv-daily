@@ -23,7 +23,6 @@ from .embed import LocalEmbedder, Ranker
 from .history import RecommendedHistory
 from .mailer import send_email
 from .paper import Paper
-from .preferences import load_preferences
 from .teaser import generate_teasers_batch, make_llm_client
 from .zotero import fetch_corpus, filter_corpus
 
@@ -123,9 +122,6 @@ def run(config: Config) -> None:
         logger.info("Reranking papers...")
         ranker = Ranker(config, embedder)
         reranked = ranker.rank(all_papers, corpus)
-        prefs = load_preferences(config.executor.preferences_file)
-        if not prefs.is_empty():
-            reranked = ranker.apply_preferences(reranked, prefs)
         timings["rerank"] = round(time.monotonic() - t_rerank, 1)
 
         presented = reranked[: config.executor.max_paper_num]
