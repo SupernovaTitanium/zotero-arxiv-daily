@@ -2,14 +2,13 @@
 
 Replaces the old Hydra + OmegaConf + apply_config_env_overrides chain. Rules:
 
-- ``config/base.yaml`` holds defaults; ``config/custom.yaml`` (written from the
-  CUSTOM_CONFIG variable in Actions) is deep-merged on top.
+- ``config/base.yaml`` holds defaults; ``config/custom.yaml`` (local overrides,
+  gitignored) is deep-merged on top.
 - ``${VAR}`` interpolates an environment variable; ``${VAR:default}`` falls
   back when the variable is unset or empty. Missing required vars raise.
 - SMTP server/port come from ``EMAIL_SMTP_SERVER`` / ``EMAIL_SMTP_PORT``
-  (preferred) or the legacy ``SMTP_SERVER`` / ``SMTP_PORT`` secrets.
-- ``LOOKBACK_DAYS`` and ``MAX_PAPER_NUM`` override ``executor`` values (this
-  replaces the sed-based overrides the workflow used to apply to custom.yaml).
+  (preferred) or the legacy ``SMTP_SERVER`` / ``SMTP_PORT`` names.
+- ``LOOKBACK_DAYS`` and ``MAX_PAPER_NUM`` override ``executor`` values.
 """
 
 from __future__ import annotations

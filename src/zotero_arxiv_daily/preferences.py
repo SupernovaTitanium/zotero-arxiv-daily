@@ -7,7 +7,7 @@
     mute:             # see LESS of this
       - text-to-image safety
 
-The file is written weekly by the preference-review workflow, which infers the
+The file is written by scripts/weekly_preference_review.py, which infers the
 keywords from the implicit feedback: recommendations the user saved to Zotero
 (positive) versus recommendations the user ignored (negative). No manual
 paper-by-paper clicking anywhere.

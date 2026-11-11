@@ -5,8 +5,7 @@ Positive signal = presented recommendations the user later saved to Zotero.
 Negative signal = presented recommendations older than preference_grace_days
 that are still absent from the Zotero corpus.
 
-The script only writes the file when there is enough evidence; the workflow
-commits it. Run: uv run python scripts/weekly_preference_review.py
+The script only writes the file when there is enough evidence. Run: uv run python scripts/weekly_preference_review.py
 """
 
 from __future__ import annotations

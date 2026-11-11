@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Zotero-arXiv-Daily recommends new arXiv/bioRxiv/medRxiv/chemRxiv papers based on a user's Zotero library. It computes embedding similarity between new papers and the user's existing library, generates TLDRs via LLM, and delivers results by email. Designed to run as a GitHub Actions workflow at zero cost.
+Zotero-arXiv-Daily recommends new arXiv/bioRxiv/medRxiv/chemRxiv papers based on a user's Zotero library. It computes embedding similarity between new papers and the user's existing library, generates TLDRs via LLM, and delivers results by email. Runs every morning from a Windows PC that dispatches the pipeline to Light1/Light2 (`scripts/run_digest.ps1`; see README).
 
 ## Commands
 
@@ -40,7 +40,7 @@ The app is a linear pipeline in `src/zotero_arxiv_daily/pipeline.py` (`run(confi
 
 ### Configuration
 
-`config.py` loads `config/base.yaml` + optional `config/custom.yaml` (written from the CUSTOM_CONFIG variable in Actions) with `${VAR}` / `${VAR:default}` env interpolation into dataclasses. `EMAIL_SMTP_SERVER`/`EMAIL_SMTP_PORT` (preferred) or legacy `SMTP_SERVER`/`SMTP_PORT` supply SMTP settings; `LOOKBACK_DAYS`, `MAX_PAPER_NUM`, `DEBUG` override executor values. Entry point is `main.py` (no Hydra).
+`config.py` loads `config/base.yaml` + optional `config/custom.yaml` (gitignored local overrides; template `config/local.example.yaml`) with `${VAR}` / `${VAR:default}` env interpolation into dataclasses. `EMAIL_SMTP_SERVER`/`EMAIL_SMTP_PORT` (preferred) or legacy `SMTP_SERVER`/`SMTP_PORT` supply SMTP settings; `LOOKBACK_DAYS`, `MAX_PAPER_NUM`, `DEBUG` override executor values. Entry point is `main.py` (no Hydra).
 
 ### Data Classes
 

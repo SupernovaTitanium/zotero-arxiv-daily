@@ -22,23 +22,14 @@
     <br> 
 </p>
 
-> [!IMPORTANT]
-> Please keep an eye on this repo, and merge your forked repo in time when there is any update of this upstream, in order to enjoy new features and fix found bugs.
-
 ## 🧐 About <a name = "about"></a>
 
-> Track new scientific researches of your interest by just forking (and staring) this repo!😊
-
-*Zotero-arXiv-Daily* finds arxiv papers that may attract you based on the context of your Zotero library, and then sends the result to your mailbox📮. It can be deployed as Github Action Workflow with **zero cost**, **no installation**, and **few configuration** of Github Action environment variables for daily **automatic** delivery.
+*Zotero-arXiv-Daily* finds arxiv papers that may attract you based on the context of your Zotero library, and then sends the result to your mailbox📮. This fork runs it every morning from a Windows PC, which hands the run to Light1 or Light2 (see *Windows 每日執行* below).
 
 ## ✨ Features
-- Totally free! All the calculation can be done in the Github Action runner locally within its quota (for public repo).
-- AI-generated TL;DR for you to quickly pick up target papers.
-- Affiliations of the paper are resolved and presented.
-- Links of PDF and code implementation (if any) presented in the e-mail.
-- List of papers sorted by relevance with your recent research interest.
-- Fast deployment via fork this repo and set environment variables in the Github Action Page.
-- Support LLM API for generating TL;DR of papers.
+- Short LLM-written teasers (Traditional Chinese) for you to quickly pick up target papers.
+- A link to each paper's PDF in the e-mail.
+- Papers sorted by relevance to your Zotero library and grouped by topic.
 - Ignore unwanted Zotero papers using a list of glob patterns.
 - Support multiple sources of papers to retrieve:
   - arxiv
@@ -50,14 +41,8 @@
 ![screenshot](./assets/screenshot.png)
 
 ## 🚀 Usage
-### Quick Start
-1. Fork (and star😘) this repo.
-![fork](./assets/fork.png)
-
-2. Set Github Action environment variables.
-![secrets](./assets/secrets.png)
-
-Below are all the secrets you need to set. They are invisible to anyone including you once they are set, for security.
+### Configuration
+Credentials and endpoints come from environment variables; the Windows daily run below reads them from `config/local.env.json`.
 
 | Key |Description | Example |
 | :---  | :---  | :--- |
@@ -68,38 +53,9 @@ Below are all the secrets you need to set. They are invisible to anyone includin
 | RECEIVER | The e-mail address that receives the paper list. | abc@outlook.com |
 | OPENAI_API_KEY | API Key when using the API to access LLMs. You can get FREE API for using advanced open source LLMs in [SiliconFlow](https://cloud.siliconflow.cn/i/b3XhBRAm). | sk-xxx |
 | OPENAI_API_BASE | API URL when using the API to access LLMs. | https://api.siliconflow.cn/v1 |
+| EMAIL_SMTP_SERVER / EMAIL_SMTP_PORT | SMTP server and port of the sender account (the legacy names `SMTP_SERVER` / `SMTP_PORT` also work). | smtp.gmail.com / 465 |
 
-Then you should also set a public variable `CUSTOM_CONFIG` for your custom configuration.
-![vars](./assets/repo_var.png)
-![custom_config](./assets/config_var.png)
-Paste the following content into the value of `CUSTOM_CONFIG` variable:
-```yaml
-zotero:
-  user_id: ${ZOTERO_ID}
-  api_key: ${ZOTERO_KEY}
-  include_path: null # Or e.g. ["2026/survey/**", "2026/reading-group/**"]
-
-email:
-  sender: ${SENDER}
-  receiver: ${RECEIVER}
-  smtp_server: smtp.gmail.com
-  smtp_port: 465
-  sender_password: ${SENDER_PASSWORD}
-
-llm:
-  api_key: ${OPENAI_API_KEY}
-  base_url: ${OPENAI_API_BASE}
-  model: gpt-4o-mini
-
-executor:
-  categories: ["cs.AI", "cs.CV", "cs.LG", "cs.CL"]
-  include_cross_list: false # Set to true to include arXiv cross-list papers in these categories.
-```
-`smtp_server` / `smtp_port` may be omitted: they are then read from the `EMAIL_SMTP_SERVER` / `EMAIL_SMTP_PORT` variables (preferred) or the legacy `SMTP_SERVER` / `SMTP_PORT` secrets.
->[!NOTE]
-> `${oc.env:XXX,yyy}` means the value of the environment variable `XXX`. If the variable is not set, the default value `yyy` will be used.
-
-Here is the full configuration (`config/base.yaml`); anything set in `CUSTOM_CONFIG` is deep-merged on top of it, and `${VAR}` interpolates environment variables (`${VAR:default}` provides a fallback):
+`config/custom.yaml` (gitignored; start from `config/local.example.yaml`) is deep-merged on top of the full configuration below (`config/base.yaml`). `${VAR}` interpolates an environment variable and `${VAR:default}` provides a fallback.
 ```yaml
 zotero:
   user_id: ${ZOTERO_ID} # User ID of your Zotero account.
@@ -135,17 +91,7 @@ executor:
   lookback_days: 3 # Days back to retrieve, so a failed run is caught up next run
   state_file: state/recommended.json
   preferences_file: preferences.yaml # Weekly-review boost/mute keywords
-
-
-That's all! Now you can test the workflow by manually triggering it:
-![test](./assets/test.png)
-
-> [!NOTE]
-> The Test-Workflow Action is the debug version of the main workflow (Send-emails-daily), which always retrieve 5 arxiv papers regardless of the date. While the main workflow will be automatically triggered everyday and retrieve new papers released yesterday. There is no new arxiv paper at weekends and holiday, in which case you may see "No new papers found" in the log of main workflow.
-
-Then check the log and the receiver email after it finishes.
-
-By default, the main workflow runs on 22:00 UTC everyday. You can change this time by editting the workflow config `.github/workflows/main.yml`.
+```
 
 ### Local Running
 Supported by [uv](https://github.com/astral-sh/uv), this workflow can easily run on your local device if uv is installed:
@@ -192,27 +138,18 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Users\light\sideproj
 
 每日 08:00（UTC+3）由本機的 server-dashboard 觸發：Windows 任務 `Hub-Tick` 每分鐘執行 `hub_tick.py`，依 `C:\Users\light\.zcode\workspace\default\server-dashboard\services.toml` 的 `[job.arxiv-digest]` 以 `wscript.exe //B //NoLogo scripts\run-hidden.vbs` 啟動入口（六小時上限）。`run-hidden.vbs` 同步等待隱藏的 `powershell.exe -WindowStyle Hidden` 並傳回結束碼，不開前景視窗。停用：從 `services.toml` 移除 `[job.arxiv-digest]` 區塊。
 
-`scripts/install-local-schedule.ps1` 與 `scripts/remove-local-schedule.ps1` 管理的是舊的 `ArxivDaily-DailyDigest` 任務，已於 2026-10-19 由上述觸發取代。備份位於 `C:\Users\light\sideproject\zotero-arxiv-daily-fix\scheduling-backup`。
-
-## 🚀 Sync with the latest version
-This project is in active development. You can subscribe this repo via `Watch` so that you can be notified once we publish new release.
-
-![Watch](./assets/subscribe_release.png)
-
-
 ## 📖 How it works
 *Zotero-arXiv-Daily* firstly retrieves all the papers in your Zotero library and all the papers released in the previous `lookback_days` days, via corresponding API. Then it calculates the embedding of each paper's abstract via an embedding model (corpus embeddings are cached between runs). The score of a paper is its mean similarity to the 10 Zotero papers closest to it, so a paper close to one of your interests ranks above one halfway between several (replayed on the papers most recently added to the library, this put 85% of them in that day's top 100, against 66% for the former weighted average over the whole library). A short Traditional-Chinese teaser for each presented paper is generated by LLM from its title and abstract (one batched request per 10 papers, several requests in flight at once). If the LLM endpoint keeps failing for about 20 minutes, the email goes out with the abstracts in place of the missing teasers and a notice at the top; a run that fails sends a short failure notice instead of the digest. arXiv papers are retrieved by an OAI-PMH harvest of the papers announced in the lookback window, with the search API as a fallback when the harvest fails.
 
 ## 🗃️ State and caching
-The pipeline keeps two state files (persisted between runs via [actions/cache](https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows) in the bundled workflow):
-- `state/recommended.json` — papers already processed, so nothing is recommended twice. If the cache is evicted (10GB repo quota / 7 days unused), the worst case is a paper being recommended once more.
+The pipeline keeps two state files in `state/` (a remote run copies them back to this PC after it succeeds):
+- `state/recommended.json` — papers already processed, so nothing is recommended twice. Entries older than `history_days` are pruned.
 - `state/corpus_embeddings.npz` — cached embeddings of your Zotero abstracts; only papers new to the library are embedded each run. It is rebuilt automatically when the embedding model changes.
 
-Each run also writes the rendered email and a full ranking with scores to `output/`, uploaded as a workflow artifact for debugging.
+Each run also writes the rendered email and a full ranking with scores to `output/` for debugging.
 
 ## 📌 Limitations
 - The recommendation algorithm is very simple, it may not accurately reflect your interest. Welcome better ideas for improving the algorithm!
-- High `MAX_PAPER_NUM` can lead the execution time exceed the limitation of Github Action runner (6h per execution for public repo, and 2000 mins per month for private repo). Commonly, the quota given to public repo is definitely enough for individual use. If you have special requirements, you can deploy the workflow in your own server, or use a self-hosted Github Action runner, or pay for the exceeded execution time.
 
 
 ## 📃 License
