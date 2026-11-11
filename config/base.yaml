@@ -29,6 +29,7 @@ llm:
   rate_limit_max_interval_seconds: 300 # Max wait / future minimum interval after 429s
   teaser_char_limit: 150 # Max characters per teaser
   teaser_batch_size: 10 # Papers per teaser LLM request
+  max_concurrency: 4 # Teaser requests in flight at once (requests_per_minute still spaces their starts); 1 = one at a time
   system_prompt: null # Override the teaser system prompt
 
 embedding:
@@ -47,8 +48,8 @@ executor:
   state_file: state/recommended.json # Dedup history (persist via actions/cache); null disables
   history_days: 30 # Days of dedup history to keep
   preferences_file: preferences.yaml # Weekly-review boost/mute keywords; null disables
-  preference_boost_weight: 1.0 # Score bonus per matched boost keyword
-  preference_mute_weight: 1.5 # Score penalty per matched mute keyword
+  preference_boost_weight: 1.5 # Score bonus per matched boost keyword (scores span about 1.7 from rank 1 to rank 100)
+  preference_mute_weight: 2.25 # Score penalty per matched mute keyword
   preference_grace_days: 5 # A presented recommendation younger than this never counts as ignored
   topic_threshold: 0.5 # Cosine similarity threshold for topic grouping
   embedding_cache_file: state/corpus_embeddings.npz # Corpus vector cache; null disables

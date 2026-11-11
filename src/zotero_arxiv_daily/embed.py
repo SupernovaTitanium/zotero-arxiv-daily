@@ -1,11 +1,12 @@
 """Embedding-based ranking: local sentence-transformers embeddings with a
-disk cache, time-decayed corpus similarity, weekly-review preference boosts,
+disk cache, similarity to the nearest corpus papers, weekly-review preference boosts,
 and greedy topic clustering for the email."""
 
 from __future__ import annotations
 
 import hashlib
 import logging
+import threading
 import warnings
 from pathlib import Path
 
@@ -88,6 +89,15 @@ class LocalEmbedder:
         self.model = model
         self.encode_kwargs = encode_kwargs or {}
         self._model = None
+        self._load_lock = threading.Lock()
+
+    def preload(self) -> None:
+        """Start loading the model on a background thread. Importing torch and
+        reading the weights takes ~18 s and needs nothing from the pipeline,
+        so the caller overlaps it with network waits; ``embed`` blocks until
+        the load is done. A load that fails here is attempted again by
+        ``embed``, which then raises in the caller's thread."""
+        threading.Thread(target=self._encoder, name="embedder-preload", daemon=True).start()
 
     def model_cache_key(self) -> str:
         # Keep this string stable: it namespaces the on-disk corpus cache.
@@ -108,8 +118,9 @@ class LocalEmbedder:
         return SentenceTransformer(self.model, trust_remote_code=True)
 
     def _encoder(self):
-        if self._model is None:
-            self._model = self._load_model()
+        with self._load_lock:
+            if self._model is None:
+                self._model = self._load_model()
         return self._model
 
     def embed(self, texts: list[str]) -> np.ndarray:
@@ -120,6 +131,18 @@ class LocalEmbedder:
 # ---------------------------------------------------------------------------
 # Ranking
 # ---------------------------------------------------------------------------
+
+# A candidate is scored against the library papers closest to it, not against
+# the whole library. A library covers several interests, and an average over
+# all of it puts papers that are vaguely near every interest above papers
+# squarely inside one. Measured on a 1269-paper library: each of the 300 most
+# recently added papers was ranked among 645 new arXiv papers, using only the
+# library as it stood a week before the paper was added. 85% reached the top
+# 100 with the mean of the 10 nearest papers, 66% with the recency-weighted
+# mean over the whole library that this replaced; 5 to 20 nearest papers
+# score within one point of 10, and the gain holds for a 90-day gap.
+NEAREST_PAPERS = 10
+
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     a = a / np.linalg.norm(a, axis=1, keepdims=True)
@@ -163,15 +186,14 @@ class Ranker:
         return np.stack(vectors)
 
     def rank(self, candidates: list[Paper], corpus: list[CorpusPaper]) -> list[Paper]:
-        """Score candidates by embedding similarity to the corpus, weighting
-        recently added Zotero papers higher, and sort descending."""
-        corpus = sorted(corpus, key=lambda x: x.added_date, reverse=True)
-        time_decay_weight = 1 / (1 + np.log10(np.arange(len(corpus)) + 1))
-        time_decay_weight: np.ndarray = time_decay_weight / time_decay_weight.sum()
+        """Score each candidate by its mean cosine similarity to the
+        ``NEAREST_PAPERS`` corpus papers closest to it (times 10), and sort
+        descending."""
         corpus_matrix = self._embed_corpus([c.abstract for c in corpus])
         candidate_matrix = np.asarray(self.embedder.embed([c.abstract for c in candidates]), dtype=np.float32)
         sim = cosine_similarity(candidate_matrix, corpus_matrix)
-        scores = (sim * time_decay_weight).sum(axis=1) * 10
+        nearest = min(NEAREST_PAPERS, len(corpus))
+        scores = np.sort(sim, axis=1)[:, -nearest:].mean(axis=1) * 10
         for score, candidate in zip(scores, candidates):
             candidate.score = float(score)
         return sorted(candidates, key=lambda x: x.score if x.score is not None else 0.0, reverse=True)

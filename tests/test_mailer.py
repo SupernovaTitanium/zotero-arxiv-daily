@@ -5,6 +5,7 @@ import ssl
 
 import pytest
 
+import zotero_arxiv_daily.mailer as mailer_module
 from zotero_arxiv_daily.config import EmailConfig
 from zotero_arxiv_daily.mailer import send_email
 from tests.canned_responses import make_stub_smtp
@@ -71,14 +72,90 @@ def test_envelope_and_subject(monkeypatch):
     assert "My_Digest" in body
 
 
-def test_login_failure_propagates(monkeypatch):
+def test_subject_can_be_replaced(monkeypatch):
+    sent = []
+    monkeypatch.setattr(smtplib, "SMTP", make_stub_smtp(sent))
+    send_email(make_email_config(), "<html>x</html>", subject="Digest failed")
+    assert "Digest_failed" in sent[0][2] or "Digest failed" in sent[0][2]
+    assert "Daily" not in sent[0][2]
+
+
+def test_login_failure_propagates_without_another_attempt(monkeypatch):
+    logins = []
+
     class FailingSMTP(make_stub_smtp([])):
         def login(self, user, password):
+            logins.append(user)
             raise smtplib.SMTPAuthenticationError(535, b"bad credentials")
 
     monkeypatch.setattr(smtplib, "SMTP", FailingSMTP)
+    monkeypatch.setattr(mailer_module, "sleep", lambda seconds: None)
     with pytest.raises(smtplib.SMTPAuthenticationError):
         send_email(make_email_config(), "<html>x</html>")
+    assert len(logins) == 1
+
+
+def _smtp_that_drops_the_first(connections_dropped: int, sent: list, attempts: list):
+    class FlakySMTP(make_stub_smtp(sent)):
+        def __init__(self, *args, **kwargs):
+            attempts.append(1)
+            if len(attempts) <= connections_dropped:
+                raise ConnectionResetError("connection reset by peer")
+
+    return FlakySMTP
+
+
+def test_dropped_connection_is_tried_again(monkeypatch):
+    sent, attempts, waits = [], [], []
+    monkeypatch.setattr(smtplib, "SMTP", _smtp_that_drops_the_first(2, sent, attempts))
+    monkeypatch.setattr(mailer_module, "sleep", waits.append)
+    send_email(make_email_config(), "<html>x</html>")
+    assert len(attempts) == 3
+    assert len(sent) == 1
+    assert waits == [30, 30]
+
+
+def test_login_that_is_refused_for_now_is_tried_again(monkeypatch):
+    logins, waits = [], []
+
+    class BusySMTP(make_stub_smtp([])):
+        def login(self, user, password):
+            logins.append(user)
+            if len(logins) == 1:
+                raise smtplib.SMTPAuthenticationError(454, b"temporary authentication failure")
+
+    monkeypatch.setattr(smtplib, "SMTP", BusySMTP)
+    monkeypatch.setattr(mailer_module, "sleep", waits.append)
+    send_email(make_email_config(), "<html>x</html>")
+    assert len(logins) == 2
+    assert waits == [30]
+
+
+def test_connection_lost_while_sending_is_not_tried_again(monkeypatch):
+    """The server may have accepted the message before the connection
+    dropped; sending it again could deliver it twice."""
+    attempts = []
+
+    class DroppingSMTP(make_stub_smtp([])):
+        def sendmail(self, sender, recipients, msg):
+            attempts.append(1)
+            raise smtplib.SMTPServerDisconnected("Connection unexpectedly closed")
+
+    monkeypatch.setattr(smtplib, "SMTP", DroppingSMTP)
+    monkeypatch.setattr(mailer_module, "sleep", lambda seconds: None)
+    with pytest.raises(smtplib.SMTPServerDisconnected):
+        send_email(make_email_config(), "<html>x</html>")
+    assert attempts == [1]
+
+
+def test_connection_that_keeps_dropping_fails_after_three_attempts(monkeypatch):
+    sent, attempts = [], []
+    monkeypatch.setattr(smtplib, "SMTP", _smtp_that_drops_the_first(99, sent, attempts))
+    monkeypatch.setattr(mailer_module, "sleep", lambda seconds: None)
+    with pytest.raises(ConnectionResetError):
+        send_email(make_email_config(), "<html>x</html>")
+    assert len(attempts) == 3
+    assert sent == []
 
 
 def test_ssl_construction_gets_timeout_and_verified_context(monkeypatch):

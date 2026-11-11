@@ -17,6 +17,8 @@ models
 test-compose.yml
 outputs
 config/private.yaml
+config/custom.yaml
+config/local.env.json
 # Recommendation dedup state
 state/
 

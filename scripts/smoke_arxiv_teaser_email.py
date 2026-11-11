@@ -1,7 +1,7 @@
 """Smoke-test arXiv retrieval, teaser generation, and email delivery.
 
-Uses the production retrieval path (``arxiv.retrieve_papers``: search API with
-backoff plus OAI-PMH fallback) over the configured lookback window, then
+Uses the production retrieval path (``arxiv.retrieve_papers``: OAI-PMH harvest
+with a search API fallback) over the configured lookback window, then
 teasers and sends one email. Run:
     uv run python scripts/smoke_arxiv_teaser_email.py --max-papers 3
 """

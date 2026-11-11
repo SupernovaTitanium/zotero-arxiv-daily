@@ -68,6 +68,9 @@ def make_stub_smtp(sent_emails: list):
         def quit(self):
             pass
 
+        def close(self):
+            pass
+
     return StubSMTP
 
 

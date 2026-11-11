@@ -1,0 +1,10 @@
+# 本機覆寫；憑證僅由 config/local.env.json 載入。
+llm:
+  api_key: ${OPENAI_API_KEY}
+  base_url: http://127.0.0.1:10100/v1
+  model: gpt-6-luna
+  generation_kwargs:
+    reasoning_effort: max
+
+executor:
+  max_paper_num: 100

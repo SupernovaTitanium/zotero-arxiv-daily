@@ -1,7 +1,12 @@
 """Tests for config loading: env interpolation, deep merge, dataclass mapping."""
 
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 import yaml
+
+from zotero_arxiv_daily.teaser import generate_teaser, make_llm_client
 
 from zotero_arxiv_daily.config import ConfigError, load_config
 
@@ -147,10 +152,55 @@ def test_explicit_zero_values_are_kept(tmp_path, env):
     assert config.llm.rate_limit_max_retries == 0
 
 
+def test_max_paper_num_below_one_is_rejected(tmp_path, env):
+    data = {**BASE, "executor": {**BASE["executor"], "max_paper_num": 0}}
+    with pytest.raises(ConfigError, match="max_paper_num"):
+        load_config(write_config(tmp_path, data))
+
+
 def test_unset_values_use_defaults(tmp_path, env):
     config = load_config(write_config(tmp_path, BASE))
     assert config.executor.history_days == 30
     assert config.executor.topic_threshold == 0.5
-    assert config.executor.preference_mute_weight == 1.5
+    assert config.executor.preference_mute_weight == 2.25
     assert config.executor.preference_grace_days == 5
     assert config.llm.rate_limit_max_retries == 5
+
+
+def test_local_example_forwards_exact_model_and_reasoning(tmp_path, env, monkeypatch):
+    import zotero_arxiv_daily.teaser as teaser_module
+
+    repo = Path(__file__).resolve().parents[1]
+    (tmp_path / "base.yaml").write_bytes((repo / "config" / "base.yaml").read_bytes())
+    (tmp_path / "custom.yaml").write_bytes((repo / "config" / "local.example.yaml").read_bytes())
+    config = load_config(tmp_path)
+    assert config.llm.base_url == "http://127.0.0.1:10100/v1"
+    assert config.llm.model == "gpt-6-luna"
+    assert config.llm.generation_kwargs == {"reasoning_effort": "max"}
+    assert config.executor.max_paper_num == 100
+    assert config.executor.state_file == "state/recommended.json"
+    assert config.executor.embedding_cache_file == "state/corpus_embeddings.npz"
+    assert config.executor.preferences_file == "preferences.yaml"
+
+    captured = {}
+
+    def create(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="teaser"))])
+
+    def openai(**kwargs):
+        captured["client"] = kwargs
+        return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+    monkeypatch.setattr(teaser_module, "OpenAI", openai)
+    config.llm.requests_per_minute = 0
+    client = make_llm_client(config.llm)
+    assert generate_teaser(client, config.llm, "T", "A") == "teaser"
+    assert captured["client"] == {
+        "api_key": env["OPENAI_API_KEY"],
+        "base_url": "http://127.0.0.1:10100/v1",
+        "timeout": teaser_module.REQUEST_TIMEOUT_SECONDS,
+        "max_retries": teaser_module.REQUEST_RETRIES,
+    }
+    assert captured["model"] == "gpt-6-luna"
+    assert captured["reasoning_effort"] == "max"

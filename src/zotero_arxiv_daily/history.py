@@ -10,10 +10,14 @@ and later added to Zotero" (positive signal) without any extra clicks.
 from __future__ import annotations
 
 import json
+import os
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from time import sleep
 
 from loguru import logger
+
+REPLACE_ATTEMPTS = 10
 
 
 class RecommendedHistory:
@@ -118,8 +122,28 @@ class RecommendedHistory:
         self.papers = {k: v for k, v in self.papers.items() if self._entry_date(v) >= cutoff}
 
     def save(self) -> None:
+        """Write a temporary file and swap it in. Written in place, a crash in
+        mid-write leaves a truncated file, which ``load`` reads as an empty
+        history: the next run would recommend papers a second time.
+
+        On Windows the swap fails while another program has the file open
+        (a reader, a virus scanner), where writing in place would not, so it
+        is tried again for a few seconds."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps({"papers": self.papers}, ensure_ascii=False, indent=1),
-            encoding="utf-8",
-        )
+        temporary = self.path.with_name(f"{self.path.name}.{os.getpid()}.tmp")
+        try:
+            temporary.write_text(
+                json.dumps({"papers": self.papers}, ensure_ascii=False, indent=1),
+                encoding="utf-8",
+            )
+            for attempt in range(REPLACE_ATTEMPTS):
+                try:
+                    os.replace(temporary, self.path)
+                    return
+                except PermissionError:
+                    if attempt == REPLACE_ATTEMPTS - 1:
+                        raise
+                    sleep(1)
+        except BaseException:
+            temporary.unlink(missing_ok=True)
+            raise

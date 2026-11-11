@@ -106,6 +106,7 @@ class LlmConfig:
     rate_limit_max_interval_seconds: int = 300
     teaser_char_limit: int = 150
     teaser_batch_size: int = 10
+    max_concurrency: int = 4
     system_prompt: str | None = None
     generation_kwargs: dict = field(default_factory=dict)
 
@@ -121,8 +122,11 @@ class ExecutorConfig:
     state_file: str | None = "state/recommended.json"
     history_days: int = 30
     preferences_file: str | None = "preferences.yaml"
-    preference_boost_weight: float = 1.0
-    preference_mute_weight: float = 1.5
+    # Added to a score whose spread from rank 1 to rank 100 is about 1.7 on a
+    # 645-paper day: one boost hit lifts a median paper to about rank 15, one
+    # mute hit drops the top paper out of the first 100.
+    preference_boost_weight: float = 1.5
+    preference_mute_weight: float = 2.25
     preference_grace_days: int = 5
     topic_threshold: float = 0.5
     embedding_cache_file: str | None = "state/corpus_embeddings.npz"
@@ -142,6 +146,15 @@ class Config:
     llm: LlmConfig
     executor: ExecutorConfig
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
+
+    def redact(self, text: str) -> str:
+        """``text`` with the credentials replaced, for error messages that
+        leave the process (failure notices, the email banner, run summaries).
+        Redact before clipping: a clip through a key would leave its start."""
+        for secret in (self.zotero.api_key, self.email.sender_password, self.llm.api_key):
+            if secret:
+                text = text.replace(secret, "[REDACTED]")
+        return text
 
 
 def _pop_patterns(data: dict, key: str) -> list[str] | None:
@@ -215,8 +228,8 @@ def load_config(config_dir: str | Path = "config") -> Config:
         state_file=executor.get("state_file") or None,
         history_days=int(_value(executor, "history_days", 30)),
         preferences_file=executor.get("preferences_file") or None,
-        preference_boost_weight=float(_value(executor, "preference_boost_weight", 1.0)),
-        preference_mute_weight=float(_value(executor, "preference_mute_weight", 1.5)),
+        preference_boost_weight=float(_value(executor, "preference_boost_weight", 1.5)),
+        preference_mute_weight=float(_value(executor, "preference_mute_weight", 2.25)),
         preference_grace_days=int(_value(executor, "preference_grace_days", 5)),
         topic_threshold=float(_value(executor, "topic_threshold", 0.5)),
         embedding_cache_file=executor.get("embedding_cache_file") or None,
@@ -224,6 +237,9 @@ def load_config(config_dir: str | Path = "config") -> Config:
     )
     if not executor_cfg.categories:
         raise ConfigError("executor.categories must list at least one arXiv category, e.g. [cs.AI, cs.LG]")
+    if executor_cfg.max_paper_num < 1:
+        # With 0 a run shows nothing and still records every retrieved paper as seen.
+        raise ConfigError("executor.max_paper_num (or MAX_PAPER_NUM) must be at least 1")
 
     return Config(
         zotero=ZoteroConfig(
@@ -252,6 +268,7 @@ def load_config(config_dir: str | Path = "config") -> Config:
             rate_limit_max_interval_seconds=int(llm.get("rate_limit_max_interval_seconds", 300) or 300),
             teaser_char_limit=int(llm.get("teaser_char_limit", 150) or 150),
             teaser_batch_size=int(llm.get("teaser_batch_size", 10) or 1),
+            max_concurrency=int(llm.get("max_concurrency", 4) or 1),
             system_prompt=llm.get("system_prompt") or None,
             generation_kwargs=dict(llm.get("generation_kwargs") or {}),
         ),

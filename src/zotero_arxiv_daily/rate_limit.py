@@ -1,3 +1,4 @@
+import threading
 import time
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -62,23 +63,41 @@ class _RateLimitedCreateResource:
         self._sleep = sleep
         self._monotonic = monotonic
         self._wall_time = wall_time
-        self._last_started_at = None
+        # Requests are issued from several threads at once; the lock guards
+        # the three fields below. Sleeping always happens outside it.
+        self._lock = threading.Lock()
+        self._next_start = float("-inf")  # earliest time the next request may start
+        self._widened_at = float("-inf")  # when a 429 last widened the interval
 
     def _wait_for_slot(self) -> float:
-        now = self._monotonic()
-        if self._last_started_at is not None and self._min_interval > 0:
-            wait = self._min_interval - (now - self._last_started_at)
-            if wait > 0:
-                self._sleep(wait)
+        """Block until this caller may start a request; return the time its
+        slot was granted. Slots are never granted closer together than the
+        minimum interval. A waiter re-checks after sleeping, because another
+        caller may have taken the slot or a 429 may have pushed every start
+        back meanwhile."""
+        while True:
+            with self._lock:
                 now = self._monotonic()
-        self._last_started_at = now
-        return now
+                if now >= self._next_start:
+                    self._next_start = now + self._min_interval
+                    return now
+                wait = self._next_start - now
+            self._sleep(wait)
 
-    def _slow_down_after_rate_limit(self) -> None:
-        if self._min_interval <= 0:
-            self._min_interval = min(self._max_interval_seconds, max(1.0, self._backoff_seconds))
-            return
-        self._min_interval = min(self._max_interval_seconds, max(self._min_interval * 2, self._min_interval))
+    def _back_off(self, wait: float, started: float) -> None:
+        """After a 429: hold every caller back for ``wait`` seconds and widen
+        the interval. A 429 on a request that was already in flight when the
+        interval last widened belongs to the same burst and does not widen it
+        again."""
+        with self._lock:
+            now = self._monotonic()
+            if started >= self._widened_at:
+                if self._min_interval <= 0:
+                    self._min_interval = min(self._max_interval_seconds, max(1.0, self._backoff_seconds))
+                else:
+                    self._min_interval = min(self._max_interval_seconds, self._min_interval * 2)
+                self._widened_at = now
+            self._next_start = max(self._next_start, now + wait)
 
     def _rate_limit_wait(self, exc: Exception, attempt: int) -> float:
         retry_after = _retry_after_seconds(exc, self._wall_time())
@@ -88,20 +107,22 @@ class _RateLimitedCreateResource:
 
     def create(self, *args, **kwargs):
         for attempt in range(self._max_retries + 1):
-            self._wait_for_slot()
+            started = self._wait_for_slot()
             try:
                 return self._resource.create(*args, **kwargs)
             except Exception as exc:
-                if not _is_rate_limit_error(exc) or attempt >= self._max_retries:
+                if not _is_rate_limit_error(exc):
                     raise
                 wait = self._rate_limit_wait(exc, attempt)
-                self._slow_down_after_rate_limit()
+                # Before deciding whether this caller retries: the other
+                # callers must hold back even when this one gives up.
+                self._back_off(wait, started)
+                if attempt >= self._max_retries:
+                    raise
                 logger.warning(
                     f"{self._name} hit rate limit; retry {attempt + 1}/{self._max_retries} "
                     f"in {wait:.1f}s; future minimum interval is {self._min_interval:.1f}s"
                 )
-                self._sleep(wait)
-                self._last_started_at = None
 
         raise RuntimeError("unreachable")
 
